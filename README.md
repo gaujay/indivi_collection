@@ -10,7 +10,7 @@ Includes Google Benchmark and Google Test support.
 	- a sequence, contiguous and reversible container
 	- with dynamically allocated and automatically handled storage
 	- similar to std::vector except it supports an optional 'offset', allowing front data manipulation
-		- example representation:  |_|a|b|_|_|  (with size=2, capacity=5, offset=1)
+		- example representation:  |\_|a|b|\_|\_|  (with size=2, capacity=5, offset=1)
 	- options (see 'offset_vector.h' for more details):
 		- reallocation position mode (start, center, end)
 		- data shift mode (near, center, far)
