@@ -8,7 +8,7 @@ Includes Google Benchmark and Google Test support.
 
 - `offset_vector`
 	- an erase-friendly, std::vector-like container for bidirectional operations
-	- meets the requirements of a sequence, contiguous and reversible container
+	- meets the requirements of a sequence, contiguous and reversible container (with basic exception safety)
 	- with dynamically allocated and automatically handled storage
 	- it supports an additional 'offset' member variable, allowing for front data manipulation
 		- example of storage representation:  |\_|a|b|\_|\_|  (with size=2, capacity=5, offset=1)
