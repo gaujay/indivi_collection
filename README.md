@@ -6,17 +6,16 @@ Includes Google Benchmark and Google Test support.
 
 ### Categories
 
-- `offset_vector`
-	- an erase-friendly, std::vector-like container for bidirectional operations
-	- meets the requirements of a sequence, contiguous and reversible container (with basic exception safety)
+- `devector` (double-ended vector)
+	- a sequence, contiguous and reversible container (with basic exception safety)
 	- with dynamically allocated and automatically handled storage
-	- it supports an additional 'offset' member variable, allowing for front data manipulation
-		- example of storage representation:  |\_|a|b|\_|\_|  (with size=2, capacity=5, offset=1)
-	- options (see 'offset_vector.h' for more details):
+	- similar to std::vector except it features an optional 'offset', allowing front data manipulation
+		- example representation:  |\_|a|b|\_|\_|  (with size=2, capacity=5, offset=1)
+	- options (see 'devector.h' for more details):
 		- reallocation position mode (start, center, end)
 		- data shift mode (near, center, far)
 		- growth factor
-		- data-construct (default, value) (avoid unnecessary memory initialization)
+		- data-construct (default Vs value) (avoid unnecessary memory initialization)
 	- complexity:
 		- random access - constant 𝓞(1)
 		- remove at start/end - constant 𝓞(1)
@@ -30,7 +29,7 @@ Benchmark configuration:
 - Compiler: MinGW 8.1.0 64-bits
 - Flags: -O2 -DNDEBUG -march=native -mtune=native
 - CPU: i7-10875h (L1-D 32K, L1-I 32K, L2 256K, L3 16M)
-- Parameters: see 'benchmark_offset_vector.h'
+- Parameters: see 'benchmark_devector.h'
 
 #### Erase random
 

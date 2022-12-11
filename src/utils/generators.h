@@ -46,6 +46,63 @@ struct Data64 {
 
 /****************************************************************************************************/
 
+#define CPLXSTRUCT_SIZE  200  // Bytes
+struct CplxStruct {
+  int8_t d[CPLXSTRUCT_SIZE];
+  
+  CplxStruct(unsigned int i)
+    : d{(int8_t)i}
+  {}
+  
+  ~CplxStruct()
+  {}
+  
+  CplxStruct(const CplxStruct& other)
+  {
+    this->operator=(other);
+  }
+  
+  CplxStruct(CplxStruct&& other)
+    : CplxStruct((const CplxStruct&)other)
+  {}
+  
+  inline CplxStruct& operator=(const CplxStruct& other)
+  {
+    assign(other);
+    return *this;
+  }
+  
+  inline CplxStruct& operator=(CplxStruct&& other)
+  {
+    assign(other);
+    return *this;
+  }
+  
+  void assign(const CplxStruct& other)
+  {
+    // Time consuming computation
+    for (size_t i = 0; i < CPLXSTRUCT_SIZE; ++i)
+    {
+      if (i % 2)
+        d[i] += other.d[i] * 5;
+      else
+        d[i] -= other.d[i] * 7;
+    }
+    for (int i = 0; i < CPLXSTRUCT_SIZE; ++i)
+    {
+      d[i] *= d[CPLXSTRUCT_SIZE - 1 - i];
+      d[i] /= other.d[i] == 0 ? other.d[i] + 1 : other.d[i];
+    }
+    for (int i = CPLXSTRUCT_SIZE - 1; i >= 0; --i)
+    {
+      d[i] *= other.d[(i*5) % CPLXSTRUCT_SIZE];
+      d[i] -= d[(i*10) % CPLXSTRUCT_SIZE];
+    }
+  }
+};
+
+/****************************************************************************************************/
+
 template <typename T>
 inline T* allocate(size_t N)
 {
@@ -110,7 +167,7 @@ inline T get_rand_unit()
 template <typename T>
 inline T get_rand(T min, T max)
 {
-	return (T)((std::rand()/(double)RAND_MAX)*(max-min) - min);
+	return (T)((std::rand()/(double)RAND_MAX)*(max-min) + min);
 }
 
 template <typename T>

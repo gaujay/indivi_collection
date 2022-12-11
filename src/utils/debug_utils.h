@@ -108,7 +108,8 @@ public:
     if (!quiet) std::cout << "Ctr0: "   << id << " (val: " << val << ")" << std::endl;
   }
   eClass(int v)           : val(v),     id(++count) {
-    if (Ctr1 && WaitCount < ++countCtr1) {
+    bool failure = Ctr1 && WaitCount < ++countCtr1;
+    if (failure) {
       --count;
       throw std::runtime_error("Ctr1: " + std::to_string(id) + " (val: " + std::to_string(val) + ")");
     }
@@ -116,7 +117,8 @@ public:
   }
   eClass(const eClass& d) : val(d.val), id(++count) {
     assert(id != d.id);
-    if (CtrCpy && WaitCount < ++countCtrCpy) {
+    bool failure = CtrCpy && WaitCount < ++countCtrCpy;
+    if (failure) {
       --count;
       throw std::runtime_error("CtrCpy: " + std::to_string(id) + " from " + std::to_string(d.id) + " (val: " + std::to_string(val) + ")");
     }
@@ -124,7 +126,8 @@ public:
   }
   eClass(eClass&& d)      : val(d.val), id(++count) {
     assert(id != d.id);
-    if (CtrMve && WaitCount < ++countCtrMve) {
+    bool failure = CtrMve && WaitCount < ++countCtrMve;
+    if (failure) {
       --count;
       throw std::runtime_error("CtrMve: " + std::to_string(id) + " from " + std::to_string(d.id) + " (val: " + std::to_string(val) + ")");
     }
@@ -143,7 +146,8 @@ public:
   eClass& operator=(const eClass& d)
   {
     assert(id != d.id);
-    if (AsgCpy && WaitCount < ++countAsgCpy)
+    bool failure = AsgCpy && WaitCount < ++countAsgCpy;
+    if (failure)
       throw std::runtime_error("AsgCpy: "  + std::to_string(d.id)  + " overrides " + std::to_string(id)
                                + " (val: " + std::to_string(d.val) + " overrides " + std::to_string(val) + ")");
     if (!quiet)
@@ -155,7 +159,8 @@ public:
   eClass& operator=(eClass&& d)
   {
     assert(id != d.id);
-    if (AsgMve && WaitCount < ++countAsgMve)
+    bool failure = AsgMve && WaitCount < ++countAsgMve;
+    if (failure)
       throw std::runtime_error("AsgMve: "  + std::to_string(d.id)  + " overrides " + std::to_string(id)
                                + " (val: " + std::to_string(d.val) + " overrides " + std::to_string(val) + ")");
     if (!quiet)

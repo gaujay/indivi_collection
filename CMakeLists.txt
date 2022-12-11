@@ -1,6 +1,6 @@
 ﻿cmake_minimum_required (VERSION 3.0)
 
-project (offset_vector LANGUAGES CXX C)
+project (indivi_collection LANGUAGES CXX C)
 
 set(CMAKE_CXX_STANDARD 11)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
