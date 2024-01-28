@@ -8,40 +8,35 @@ Includes Google Benchmark and Google Test support.
 
 - `devector` (double-ended vector)
 	- a sequence, contiguous and reversible container (with basic exception safety)
-	- with dynamically allocated and automatically handled storage
-	- similar to std::vector except it features an optional 'offset', allowing front data manipulation
+	- dynamically allocated and automatically handled storage (supports allocator, space complexity 𝓞(n))
+	- similar to std::vector but with an additional 'offset', allowing front data manipulation
 		- example representation:  |\_|a|b|\_|\_|  (with size=2, capacity=5, offset=1)
 	- options (see 'devector.h' for more details):
 		- reallocation position mode (start, center, end)
 		- data shift mode (near, center, far)
 		- growth factor
-		- data-construct (default Vs value) (avoid unnecessary memory initialization)
 	- complexity:
 		- random access - constant 𝓞(1)
 		- remove at start/end - constant 𝓞(1)
 		- insert at start/end - amortized constant 𝓞(1), or 𝓞(N) if size < capacity and start == startOfStorage/end == endOfStorage
 		- insert/remove - linear in the distance to the closest between start and end 𝓞(N/2)
 
+- `sparque` (sparse deque)
+	- a sequence, non-contiguous and reversible container that allows fast random insertion and deletion (with basic exception safety)
+	- dynamically allocated and automatically adjusted storage (allocator-aware, space complexity 𝓞(n))
+	- similar to std::deque, but based on a counted B+ tree where each memory chunk behave as a double-ended vector.
+	- options (see 'sparque.h' for more details):
+		- chunk size (default: max(4, 1024 / sizeof(T)))
+		- node size (default: 16)
+	- complexity:
+		- random access - 𝓞(log_b(n)), where b is the number of children per node
+		- insertion or removal of elements at start/end - constant 𝓞(1)
+		- insertion or removal of elements - amortized 𝓞(m), where m is the number of elements per chunk
+		- iteration - contant 𝓞(n)
+
 ### Benchmark results
 
-Benchmark configuration:
-- OS: Windows 10 64-bits
-- Compiler: MinGW 8.1.0 64-bits
-- Flags: -O2 -DNDEBUG -march=native -mtune=native
-- CPU: i7-10875h (L1-D 32K, L1-I 32K, L2 256K, L3 16M)
-- Parameters: see 'benchmark_devector.h'
-
-#### Erase random
-
-![Erase_Random](docs/Erase_Random.png)
-
-#### Insert random (with realloc mode = center)
-
-![Insert_Random](docs/Insert_Random.png)
-
-#### Erase-Insert random
-
-![EraseInsert_Random](docs/EraseInsert_Random.png)
+See corresponding 'bench' sub-folders for graphs.
 
 ### Dependencies
 
@@ -66,3 +61,7 @@ You can open 'CMakeLists.txt' with a compatible IDE or use command line:
 ### License
 
 Apache License 2.0
+
+Benchmarked third-party libraries:
+- [seq::tiered_vector](https://github.com/Thermadiag/seq): MIT License
+- [segmented_tree](https://github.com/det/segmented_tree): Boost Software License - Version 1.0

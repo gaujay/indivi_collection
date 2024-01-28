@@ -1,36 +1,53 @@
 /**
  * Copyright 2021 Guillaume AUJAY. All rights reserved.
- *
+ * Distributed under the Apache License Version 2.0
  */
 
 #ifndef BUMP_ALLOCATOR_H
 #define BUMP_ALLOCATOR_H
 
+#include <type_traits>
+#include <utility>
+#include <vector>
+
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
-#include <vector>
-#include <utility>
-#include <type_traits>
 
 
-template <class T, uint16_t TPerChunk = 512>
+template <class T, uint32_t TPerChunk = 256u>
 class bump_allocator
 {
 public:
   using value_type = T;
   
-  bump_allocator()
+  using propagate_on_container_swap = std::true_type;
+  using propagate_on_container_copy_assignment = std::false_type;
+  using propagate_on_container_move_assignment = std::false_type;
+  
+  template<class U>
+  struct rebind
+  {
+    typedef bump_allocator<U, TPerChunk> other;
+  };
+  
+  bump_allocator() = default;
+  
+  bump_allocator(const bump_allocator& /*other*/) noexcept
   {}
   
-  bump_allocator(const bump_allocator& other) = delete;
+  template<class U>
+  bump_allocator(const bump_allocator<U, TPerChunk>& /*other*/) noexcept
+  {}
   
-  bump_allocator(bump_allocator&& other)
+  bump_allocator(bump_allocator&& other) noexcept
     : mPos(other.mPos)
     , mChunks(std::move(other.mChunks))
     , mAllocated(other.mAllocated)
   {
-    other.mAllocated = 0;
+    other.mPos = nullptr;
+    other.mChunks.clear();
+    other.mAllocated = 0u;
   }
   
   ~bump_allocator()
@@ -38,6 +55,11 @@ public:
     assert(mAllocated == 0);
     for (T* chunk : mChunks)
       delete[] reinterpret_cast<storage_type*>(chunk);
+  }
+  
+  bump_allocator& operator=(const bump_allocator& /*other*/) noexcept
+  {
+    return *this;
   }
   
   bump_allocator& operator=(bump_allocator&& other) noexcept
@@ -48,6 +70,8 @@ public:
     mPos = other.mPos;
     mChunks = std::move(other.mChunks);
     mAllocated = other.mAllocated;
+    
+    other.mPos = nullptr;
     other.mAllocated = 0;
     
     return *this;
@@ -56,7 +80,7 @@ public:
   T* allocate(std::size_t n)
   {
     assert(n <= (std::size_t)TPerChunk);
-    if (mChunks.empty() || needNewChunk((uint16_t)n))
+    if (mChunks.empty() || needNewChunk((uint32_t)n))
     {
       mChunks.push_back(reinterpret_cast<T*>(new storage_type[TPerChunk]));
       mPos = mChunks.back();
@@ -75,19 +99,33 @@ public:
     mAllocated -= n;
   }
   
+  bool empty() const noexcept
+  {
+    return mAllocated == 0u;
+  }
+  
+  friend bool operator!=(const bump_allocator& lhs, const bump_allocator& rhs) noexcept
+  {
+    return &lhs != &rhs;
+  }
+  friend bool operator==(const bump_allocator& lhs, const bump_allocator& rhs) noexcept
+  {
+    return &lhs == &rhs;
+  }
+  
 private:
   using storage_type = typename std::aligned_storage<sizeof(T), alignof(T)>::type;
   
-  bool needNewChunk(uint16_t n) const
+  bool needNewChunk(uint32_t n) const
   {
     T* chunk = mChunks.back();
-    uint16_t taken = (uint16_t)(mPos - chunk);
+    uint32_t taken = (uint32_t)(mPos - chunk);
     return taken + n > TPerChunk;
   }
   
   T* mPos = nullptr;
   std::vector<T*> mChunks;
-  uint64_t mAllocated = 0;   // debug
+  uint64_t mAllocated = 0u; // debug
 };
 
 
