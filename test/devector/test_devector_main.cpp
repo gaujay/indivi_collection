@@ -1,16 +1,20 @@
 /**
  * Copyright 2021 Guillaume AUJAY. All rights reserved.
- *
+ * Distributed under the Apache License Version 2.0
  */
 
 #include "gtest/gtest.h"
 
-#include "utils/debug_utils.h"
-#include "utils/bump_allocator.h"
 #include "indivi/devector.h"
+#include "utils/bump_allocator.h"
+#include "utils/debug_utils.h"
+
+#include <initializer_list>
+#include <memory>
+#include <stdexcept>
+#include <utility>
 
 #include <cmath>
-#include <memory>
 
 #define CHECK_OFFSET  // for devector<T, NEAR, START>
 

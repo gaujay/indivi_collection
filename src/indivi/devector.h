@@ -1,22 +1,22 @@
 /**
  * Copyright 2021 Guillaume AUJAY. All rights reserved.
- *
+ * Distributed under the Apache License Version 2.0
  */
 
 #ifndef INDIVI_DEVECTOR_H
 #define INDIVI_DEVECTOR_H
 
-#include <cmath>
-#include <cstdint>
-#include <cassert>
-#include <stdexcept>
+#include <algorithm>
+#include <initializer_list>
+#include <iterator>
 #include <limits>
 #include <memory>
-#include <utility>
-#include <iterator>
-#include <algorithm>
+#include <stdexcept>
 #include <type_traits>
-#include <initializer_list>
+#include <utility>
+
+#include <cassert>
+#include <cmath>
 
 #define INDIVI_DV_DEFAULT_INIT    // Default-construct values, instead of value-construct (avoid memory value-initialization)
 #ifdef INDIVI_DV_DEFAULT_INIT
@@ -73,7 +73,8 @@ public:
   using reverse_iterator = std::reverse_iterator<iterator>;
   using const_reverse_iterator = std::reverse_iterator<const_iterator>;
   
-  static_assert(std::is_same<typename Allocator::value_type, value_type>::value, "devector: Allocator::value_type must be same as value_type");
+  static_assert(std::is_same<typename Allocator::value_type, value_type>::value,
+                "devector: Allocator::value_type must be the same as value_type");
 
 private:
   // Members
@@ -794,8 +795,14 @@ public:
       m_.offset = new_offset;
       
       // After offset move
+      iterator ot;
+      if (copy_n > 0u)
+      {
       iterator it = old_offset + copy_n;
-      iterator ot = std::move(it, (iterator)pos, old_offset);
+        ot = std::move(it, (iterator)pos, old_offset);
+      }
+      else
+        ot = (iterator)pos;
       
       // After offset assign
       size_type assign_n = std::min<size_type>(count - fill_n, m_.end - ot);
@@ -943,8 +950,14 @@ public:
       m_.offset = new_offset;
       
       // After offset move
+      iterator ot;
+      if (copy_n > 0u)
+      {
       iterator it = old_offset + copy_n;
-      iterator ot = std::move(it, (iterator)pos, old_offset);
+        ot = std::move(it, (iterator)pos, old_offset);
+      }
+      else
+        ot = (iterator)pos;
       
       // After offset assign
       size_type assign_n = std::min<size_type>(count - fill_n, m_.end - ot);

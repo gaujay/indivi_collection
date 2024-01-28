@@ -1,46 +1,57 @@
 /**
  * Copyright 2021 Guillaume AUJAY. All rights reserved.
- *
+ * Distributed under the Apache License Version 2.0
  */
 
 #ifndef DEBUG_UTILS_H
 #define DEBUG_UTILS_H
 
-#include <cassert>
-#include <stdexcept>
 #include <iostream>
+#include <stdexcept>
 #include <string>
 
-#define INIT_CODE 9876  // arbitrary
+#include <cassert>
+
+// arbitrary
+#define INIT_CODE (9876)  // _init after ctr
+#define MOVE_CODE (7689)  // _init after move
+#define DTR_ID_CODE   (-1234) // id after dtr
+#define DTR_VAL_CODE  (-4321) // val after dtr
+//#define MVE_ID_CODE   (2143)  // id after move
+#define MVE_VAL_CODE  (3412)  // val after move
 
 
 // Debug Class
 class dClass
 {
 public:
-  dClass()                : val(-1),    id(++count), _init(INIT_CODE) {
+  dClass() : val(-1), id(++count), _init(INIT_CODE) {
     if (!quiet) std::cout << "Ctr0: "   << id << " (val: " << val << ")" << std::endl;
   }
-  dClass(int v)           : val(v),     id(++count), _init(INIT_CODE) {
+  dClass(int v) : val(v), id(++count), _init(INIT_CODE) {
     if (!quiet) std::cout << "Ctr1: "   << id << " (val: " << val << ")" << std::endl;
   }
   dClass(const dClass& d) : val(d.val), id(++count), _init(INIT_CODE) {
     assert(id != d.id);
     assert(d._init == INIT_CODE);
+    ++copies;
     if (!quiet) std::cout << "CtrCpy: " << id << " from " << d.id << " (val: " << val << ")" << std::endl;
   }
-  dClass(dClass&& d)      : val(d.val), id(++count), _init(INIT_CODE) {
+  dClass(dClass&& d) noexcept : val(d.val), id(++count), _init(INIT_CODE) {
     assert(id != d.id);
     assert(d._init == INIT_CODE);
+    ++moves;
     if (!quiet) std::cout << "CtrMve: " << id << " from " << d.id << " (val: " << val << ")" << std::endl;
+    d._init = MOVE_CODE;
+    d.val = MVE_VAL_CODE;
   }
   
   ~dClass() {
-    assert((id != -1234 || val != -4321 || _init != -INIT_CODE) && "Error: double destruct");
-    assert(id > 0 && id <= count && _init == INIT_CODE && "Error: garbage destruct");
+    assert((id != DTR_ID_CODE || val != DTR_VAL_CODE || _init != -INIT_CODE) && "Error: double destruct");
+    assert(id > 0 && id <= count && (_init == INIT_CODE || _init == MOVE_CODE) && "Error: garbage destruct");
     if (!quiet) std::cout << "Dtr: " << id << " (val: " << val << ")" << std::endl;
-    id  = -1234; // arbitrary
-    val = -4321;
+    id  = DTR_ID_CODE;
+    val = DTR_VAL_CODE;
     _init = -INIT_CODE;
     ++decount;
   }
@@ -48,28 +59,36 @@ public:
   dClass& operator=(const dClass& d)
   {
 //    assert(id != d.id);
-    assert(  _init == INIT_CODE);
+    assert(  _init == INIT_CODE || _init == MOVE_CODE);
     assert(d._init == INIT_CODE);
+    ++copies;
     if (!quiet)
       std::cout << "AssignCpy: " << d.id << " overrides " << id
                 << " (val: " << d.val << " overrides " << val << ")" << std::endl;
     val = d.val;
+    _init = INIT_CODE;
     return *this;
   }
-  dClass& operator=(dClass&& d)
+  dClass& operator=(dClass&& d) noexcept
   {
 //    assert(id != d.id);
-    assert(  _init == INIT_CODE);
+    assert(  _init == INIT_CODE || _init == MOVE_CODE);
     assert(d._init == INIT_CODE);
+    ++moves;
     if (!quiet)
       std::cout << "AssignMve: " << d.id << " overrides " << id
                 << " (val: " << d.val << " overrides " << val << ")" << std::endl;
     val = d.val;
+    _init = INIT_CODE;
+    
+    d._init = MOVE_CODE;
+    d.val = MVE_VAL_CODE;
     return *this;
   }
   
   std::string toString() const { return std::to_string(id) + " (val: " + std::to_string(val) + ")\n"; }
   
+  friend std::ostream& operator<<(std::ostream &os, const dClass& d) { return os << d.val; }
   
   // Members
   int val;
@@ -77,18 +96,35 @@ public:
   int _init;
   static int count;
   static int decount;
+  static uint64_t copies;
+  static uint64_t moves;
   static bool quiet;
+  
+  static void resetStats() noexcept
+  {
+    count   = 0;
+    decount = 0;
+    copies = 0u;
+    moves  = 0u;
+    quiet  = true;
+  }
 };
 
 // Init
 int dClass::count   = 0;
 int dClass::decount = 0;
+uint64_t dClass::copies = 0u;
+uint64_t dClass::moves  = 0u;
 bool dClass::quiet  = true;
 
 // Non-member functions
 bool operator==(const dClass& lhs, const dClass& rhs)
 {
   return lhs.val == rhs.val;
+}
+bool operator!=(const dClass& lhs, const dClass& rhs)
+{
+  return !(lhs.val == rhs.val);
 }
 
 
@@ -135,11 +171,11 @@ public:
   }
   
   ~eClass() {
-    assert((id != -1234 || val != -4321) && "Error: double destruct");
+    assert((id != DTR_ID_CODE || val != DTR_VAL_CODE) && "Error: double destruct");
     assert(id > 0 && id <= count && "Error: garbage destruct");
     if (!quiet) std::cout << "Dtr: " << id << " (val: " << val << ")" << std::endl;
-    id  = -1234; // random
-    val = -4321;
+    id  = DTR_ID_CODE;
+    val = DTR_VAL_CODE;
     ++decount;
   }
   

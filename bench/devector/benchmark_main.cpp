@@ -1,6 +1,6 @@
 /**
  * Copyright 2021 Guillaume AUJAY. All rights reserved.
- *
+ * Distributed under the Apache License Version 2.0
  */
 
 // Benchmark

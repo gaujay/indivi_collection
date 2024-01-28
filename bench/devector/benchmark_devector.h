@@ -1,20 +1,19 @@
 /**
  * Copyright 2021 Guillaume AUJAY. All rights reserved.
- *
+ * Distributed under the Apache License Version 2.0
  */
 
 // Benchmark
 #include <benchmark/benchmark.h>
 
 // Std
-#include <cstdint>
-#include <cstdlib>
-#include <cassert>
+#include <algorithm>
+#include <deque>
 #include <string>
 #include <vector>
-#include <deque>
-#include <random>
-#include <algorithm>
+
+#include <cstdint>
+#include <cstdlib>
 
 // Utils
 #include "utils/generators.h"

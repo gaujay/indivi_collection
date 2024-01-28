@@ -1,20 +1,20 @@
 /**
  * Copyright 2021 Guillaume AUJAY. All rights reserved.
- *
+ * Distributed under the Apache License Version 2.0
  */
 
 #ifndef GENERATORS_H
 #define GENERATORS_H
 
+#include <algorithm>
+#include <iostream>
+#include <numeric>
+#include <string>
+#include <vector>
+
+#include <cmath>
 #include <cstdlib>
 #include <ctime>
-#include <cmath>
-
-#include <vector>
-#include <string>
-#include <numeric>
-#include <iostream>
-#include <algorithm>
 
 /****************************************************************************************************/
 
@@ -22,7 +22,11 @@ template <const size_t N>
 struct Data8 {
   int8_t d[N];
   
+  Data8() = default;
   Data8(unsigned int i) : d{(int8_t)i} {}
+//Data8(const Data8& other) { for (size_t i=0; i<N; ++i) d[i] -= other.d[i]; }
+//Data8(Data8&& other) { for (size_t i=0; i<N; ++i) d[i] += other.d[i]; }
+//Data8& operator=(const Data8& other) = default;
   inline Data8& operator=(int val) { for (size_t i=0; i<N; ++i) d[i] = (int8_t)val; return *this; }
   inline Data8& operator++() { for (size_t i=0; i<N; ++i) ++(d[i]); return *this; }
 };
