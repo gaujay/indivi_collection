@@ -1916,6 +1916,29 @@ TEST(SparqueTest, Resize)
  EXPECT_EQ(dClass::count, dClass::decount);
 }
 
+TEST(SparqueTest, SortAll)
+{
+  srand(852467u);
+  int sz = 9999;
+  sparque<int> sq(sz);
+  std::deque<int> dq(sz);
+  
+  int i = 0;
+  for (auto& v : sq)
+  {
+    int rnd = rand();
+    v = rnd;
+    dq[i++] = rnd;
+  }
+  
+  std::sort(sq.begin(), sq.end());
+  std::sort(dq.begin(), dq.end());
+  
+  i = 0;
+  for (const auto& v : sq)
+    EXPECT_EQ(v, dq[i++]);
+}
+
 TEST(SparqueTest, RandomOps)
 {
   unsigned int seed = (unsigned int)time(NULL);

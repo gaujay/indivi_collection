@@ -746,7 +746,8 @@ private:
         newCapa = std::min<uint64_t>(newCapa, std::numeric_limits<uint32_t>::max());
         
         Leaf* newStorage = get_leaf_allocator().allocate(newCapa);
-        std::memcpy(static_cast<void*>(newStorage), mDataAlc.data, mSize * sizeof(Leaf));
+        if (mSize != 0u)
+          std::memcpy(static_cast<void*>(newStorage), mDataAlc.data, mSize * sizeof(Leaf));
         get_leaf_allocator().deallocate(mDataAlc.data, mCapa);
         mDataAlc.data = newStorage;
         mCapa = (uint32_t)newCapa;
@@ -1084,7 +1085,8 @@ private:
         newCapa = std::min<uint64_t>(newCapa, std::numeric_limits<uint32_t>::max());
         
         Node* newStorage = get_node_allocator().allocate(newCapa);
-        std::memcpy(newStorage, mData, mSize * sizeof(Node));
+        if (mSize != 0u)
+          std::memcpy(newStorage, mData, mSize * sizeof(Node));
         get_node_allocator().deallocate(mData, mCapa);
         mData = newStorage;
         mCapa = (uint32_t)newCapa;
@@ -1126,6 +1128,14 @@ public:
   template <typename Pointer, typename Reference>
   class Iterator
   {
+  public:
+    using iterator_category = std::random_access_iterator_tag;
+    using value_type = typename sparque::value_type;
+    using size_type = typename sparque::size_type;
+    using difference_type = typename sparque::difference_type;
+    using pointer = Pointer;
+    using reference = Reference;
+    
   private:
     friend sparque;
     
@@ -1348,13 +1358,6 @@ public:
     }
     
   public:
-    using iterator_category = std::random_access_iterator_tag;
-    using value_type = typename sparque::value_type;
-    using size_type = typename sparque::size_type;
-    using difference_type = typename sparque::difference_type;
-    using pointer = Pointer;
-    using reference = Reference;
-    
     Iterator() = default;
     Iterator(const Iterator& other) = default;
     
@@ -3957,7 +3960,7 @@ public:
   
   uint32_t leaf_count() const noexcept { return mLeafs.size(); }
   
-  // Complexity: O(n)
+  // Note: complexity is O(n)
   size_type count_chunks() const noexcept
   {
     size_type count = 0u;
@@ -4438,6 +4441,7 @@ public:
     SANITY_CHECK_SQ;
   }
   
+  // Note: the behavior is undefined if value is a reference into *this.
   iterator insert(const_iterator pos, const T& value)
   {
     assert(is_valid(pos));
@@ -4516,6 +4520,7 @@ public:
     }
   }
   
+  // Note: the behavior is undefined if value is a reference into *this.
   iterator insert(const_iterator pos, T&& value)
   {
     assert(is_valid(pos));
@@ -5187,6 +5192,11 @@ private:
     return !(lhs < rhs);
   }
   
+  friend void swap(sparque& lhs, sparque& rhs) noexcept(noexcept(lhs.swap(rhs)))
+  {
+    lhs.swap(rhs);
+  }
+  
   //
   // Debug functions
   //
@@ -5372,17 +5382,6 @@ private:
 }; // end of sparque
 
 } // namespace indivi
-
-
-// External
-namespace std
-{
-  template <class T, uint16_t ChunkSize, uint16_t NodeSize>
-  inline void swap(indivi::sparque<T, ChunkSize, NodeSize>& lhs, indivi::sparque<T, ChunkSize, NodeSize>& rhs) noexcept
-  {
-    lhs.swap(rhs);
-  }
-}
 
 
 #undef SANITY_CHECK_SQ
