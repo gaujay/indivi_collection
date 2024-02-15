@@ -68,6 +68,7 @@ public:
   using const_reference = const value_type&;
   using pointer = value_type*;
   using const_pointer = const value_type*;
+  using allocator_type = Allocator;
   using iterator = value_type*;
   using const_iterator = const value_type*;
   using reverse_iterator = std::reverse_iterator<iterator>;
@@ -400,7 +401,7 @@ public:
   
   void assign(std::initializer_list<T> ilist)
   {
-    operator=(ilist);
+    assign(ilist.begin(), ilist.end());
   }
   
   //
@@ -587,7 +588,7 @@ public:
     ++m_.end;
   }
   
-  template<class... Args>
+  template <class... Args>
   void emplace_back(Args&&... args)
   {
     if (m_.end == m_.end_of_storage)
@@ -625,7 +626,7 @@ public:
     --m_.offset;
   }
   
-  template<class... Args>
+  template <class... Args>
   void emplace_front(Args&&... args)
   {
     if (m_.offset == m_.begin)
@@ -798,7 +799,7 @@ public:
       iterator ot;
       if (copy_n > 0u)
       {
-      iterator it = old_offset + copy_n;
+        iterator it = old_offset + copy_n;
         ot = std::move(it, (iterator)pos, old_offset);
       }
       else
@@ -953,7 +954,7 @@ public:
       iterator ot;
       if (copy_n > 0u)
       {
-      iterator it = old_offset + copy_n;
+        iterator it = old_offset + copy_n;
         ot = std::move(it, (iterator)pos, old_offset);
       }
       else
@@ -1062,7 +1063,7 @@ public:
     return insert(pos, (iterator)ilist.begin(), (iterator)ilist.end());
   }
   
-  template< class... Args >
+  template <class... Args>
   iterator emplace(const_iterator pos, Args&&... args)
   {
     assert(pos >= m_.offset);
@@ -1759,8 +1760,8 @@ private:
     size_type new_size = size() + 1;
     
     auto new_vec = move_until(pos, new_size);
-    ::new (static_cast<void*>(new_vec.m_.end)) T(value);
-    ++new_vec.m_.end;
+    ::new (static_cast<void*>(new_vec.end)) T(value);
+    ++new_vec.end;
     move_from(new_vec, (iterator)pos);
     
     swap(new_vec);
@@ -1778,7 +1779,7 @@ private:
     swap(new_vec);
   }
   
-  template< class... Args >
+  template <class... Args>
   void realloc_insert(const_iterator pos, Args&&... args)
   {
     size_type new_size = size() + 1;
@@ -1852,7 +1853,7 @@ private:
 //
 // Non-member functions
 //
-template<class T>
+template <class T>
 bool operator==(const devector<T>& lhs, const devector<T>& rhs)
 {
   if (lhs.size() != rhs.size())
@@ -1866,7 +1867,7 @@ bool operator==(const devector<T>& lhs, const devector<T>& rhs)
   return true;
 }
 
-template<class T>
+template <class T>
 inline bool operator!=(const devector<T>& lhs, const devector<T>& rhs)
 {
   if (lhs.size() != rhs.size())
@@ -1880,7 +1881,7 @@ inline bool operator!=(const devector<T>& lhs, const devector<T>& rhs)
   return false;
 }
 
-template<class T>
+template <class T>
 inline bool operator<(const devector<T>& lhs, const devector<T>& rhs)
 {
   for (auto lit = lhs.cbegin(), rit = rhs.cbegin(); lit != lhs.cend() && rit != rhs.cend(); ++lit, ++rit)
@@ -1891,7 +1892,7 @@ inline bool operator<(const devector<T>& lhs, const devector<T>& rhs)
   return true;
 }
 
-template<class T>
+template <class T>
 inline bool operator<=(const devector<T>& lhs, const devector<T>& rhs)
 {
   for (auto lit = lhs.cbegin(), rit = rhs.cbegin(); lit != lhs.cend() && rit != rhs.cend(); ++lit, ++rit)
@@ -1902,7 +1903,7 @@ inline bool operator<=(const devector<T>& lhs, const devector<T>& rhs)
   return true;
 }
 
-template<class T>
+template <class T>
 inline bool operator>(const devector<T>& lhs, const devector<T>& rhs)
 {
   for (auto lit = lhs.cbegin(), rit = rhs.cbegin(); lit != lhs.cend() && rit != rhs.cend(); ++lit, ++rit)
@@ -1913,7 +1914,7 @@ inline bool operator>(const devector<T>& lhs, const devector<T>& rhs)
   return true;
 }
 
-template<class T>
+template <class T>
 inline bool operator>=(const devector<T>& lhs, const devector<T>& rhs)
 {
   for (auto lit = lhs.cbegin(), rit = rhs.cbegin(); lit != lhs.cend() && rit != rhs.cend(); ++lit, ++rit)
@@ -1929,7 +1930,7 @@ inline bool operator>=(const devector<T>& lhs, const devector<T>& rhs)
 
 namespace std
 {
-  template<class T>
+  template <class T>
   inline void swap(indivi::devector<T>& lhs, indivi::devector<T>& rhs) noexcept
   {
     lhs.swap(rhs);
