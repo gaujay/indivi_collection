@@ -135,12 +135,39 @@ inline std::string get_one(unsigned int len)
 
 /****************************************************************************************************/
 
-unsigned int _get_one_inc = 0;
+template <typename T>
+inline T get_from(unsigned int val, unsigned int)
+{
+  return T(val);
+}
+
+template <>
+inline std::string get_from(unsigned int val, unsigned int len)
+{
+  std::string res = std::to_string(val);
+  res.resize(len, '_');
+  return res;
+}
+
+/****************************************************************************************************/
+
+unsigned int _get_one_inc = (unsigned int)-1;
+
+void get_one_inc_reset()
+{
+  _get_one_inc = (unsigned int)-1;
+}
 
 template <typename T>
 inline T get_one_inc()
 {
   return (T)(++_get_one_inc); // forced cast
+}
+
+template <>
+inline std::string get_one_inc()
+{
+  return std::to_string(++_get_one_inc);
 }
 
 template <typename T>
@@ -152,10 +179,17 @@ inline T get_one_inc(unsigned int)
 template <>
 inline std::string get_one_inc(unsigned int len)
 {
-  return std::string(len, (unsigned char)((++_get_one_inc) % 256));
+  std::string res = std::to_string(++_get_one_inc);
+  res.resize(len, '_');
+  return res;
 }
 
 /****************************************************************************************************/
+
+inline int rand_sq()
+{
+  return std::rand() * std::rand(); // RAND_MAX too limited
+}
 
 inline char get_rand_printable_char()
 {
@@ -165,19 +199,19 @@ inline char get_rand_printable_char()
 template <typename T>
 inline T get_rand_unit()
 {
-	return (std::rand()/(T)RAND_MAX);
+  return (rand_sq()/(T)(RAND_MAX * RAND_MAX));
 }
 
 template <typename T>
 inline T get_rand(T min, T max)
 {
-	return (T)((std::rand()/(double)RAND_MAX)*(max-min) + min);
+  return (T)(get_rand_unit<double>() * (max-min) + min);
 }
 
 template <typename T>
 inline T get_rand(unsigned int)
 {
-  return (T)(std::rand());  // forced cast
+  return (T)(rand_sq()); // forced cast
 }
 
 template <>
@@ -195,7 +229,9 @@ inline char get_rand<char>(unsigned int)
 template <>
 inline std::string get_rand<std::string>(unsigned int len)
 {
-  return std::string(len, get_rand_printable_char());
+  std::string res = std::to_string(rand_sq());
+  res.resize(len, '_');
+  return res;
 }
 
 /****************************************************************************************************/

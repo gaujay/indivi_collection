@@ -4,6 +4,7 @@ include(GoogleTest)
 #
 set(SOURCE_FILES_DEVECTOR
     test_devector_main.cpp
+    ${CMAKE_SOURCE_DIR}/src/utils/debug_utils.cpp
 )
 
 set(gtest_force_shared_crt

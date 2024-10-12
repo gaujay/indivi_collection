@@ -21,7 +21,47 @@
 #define MVE_VAL_CODE  (3412)  // val after move
 
 
-// Debug Class
+// Debug Class 1
+struct DbgClass
+{
+  static bool Dbg; // need init in translation unit
+  static int idx;
+  static int count;
+  int id; // 0 = destroyed
+  
+  DbgClass() : id(++idx) { ++count; if (Dbg) std::cout << "Ctr: " << id << "\n"; }
+  DbgClass(int id_) : id(id_) { assert(id > 0); ++count; if (Dbg) std::cout << "Ctr: " << id << "\n"; }
+  DbgClass(const DbgClass& other) : id(other.id) { assert(id > 0); ++count; if (Dbg) std::cout << "Ctr(const&): " << id << "\n"; }
+  DbgClass(DbgClass&& other) noexcept : id(other.id) { assert(id > 0); ++count; other.id = -other.id; if (Dbg) std::cout << "Ctr(&&): " << id << "\n"; }
+  ~DbgClass() { assert(id != 0); --count; if (Dbg) std::cout << "Dtr: " << id << "\n"; id = 0; }
+  
+  DbgClass& operator=(const DbgClass& other) { id = other.id; if (Dbg) std::cout << "Op=&: " << id << "\n"; return *this; }
+  DbgClass& operator=(DbgClass&& other) noexcept { id = other.id; other.id = -other.id; if (Dbg) std::cout << "Op=&&: " << id << "\n"; return *this; }
+  
+  bool operator==(const DbgClass& other) const { return id == other.id; }
+  bool operator!=(const DbgClass& other) const { return id != other.id; }
+};
+
+// MurmurHash3’s 64-bit finalizer
+// by Austin Appleby, public domain
+static uint64_t hash_key(uint64_t key)
+{
+  uint64_t result = key;
+  result ^= result >> 33;
+  result *= 0xff51afd7ed558ccdull;
+  result ^= result >> 33;
+  result *= 0xc4ceb9fe1a85ec53ull;
+  result ^= result >> 33;
+  return result;
+}
+
+namespace std {
+template <> struct hash<DbgClass> {
+  size_t operator()(const DbgClass& x) const { return hash_key(x.id); }
+};
+}
+
+// Debug Class 2
 class dClass
 {
 public:
@@ -88,6 +128,10 @@ public:
   
   std::string toString() const { return std::to_string(id) + " (val: " + std::to_string(val) + ")\n"; }
   
+  // Non-member functions
+  friend bool operator<(const dClass& lhs, const dClass& rhs) { return lhs.val < rhs.val; }
+  friend bool operator==(const dClass& lhs, const dClass& rhs) { return lhs.val == rhs.val; }
+  friend bool operator!=(const dClass& lhs, const dClass& rhs) { return !(lhs.val == rhs.val); }
   friend std::ostream& operator<<(std::ostream &os, const dClass& d) { return os << d.val; }
   
   // Members
@@ -109,23 +153,6 @@ public:
     quiet  = true;
   }
 };
-
-// Init
-int dClass::count   = 0;
-int dClass::decount = 0;
-uint64_t dClass::copies = 0u;
-uint64_t dClass::moves  = 0u;
-bool dClass::quiet  = true;
-
-// Non-member functions
-bool operator==(const dClass& lhs, const dClass& rhs)
-{
-  return lhs.val == rhs.val;
-}
-bool operator!=(const dClass& lhs, const dClass& rhs)
-{
-  return !(lhs.val == rhs.val);
-}
 
 
 // Error Class, throws on:
