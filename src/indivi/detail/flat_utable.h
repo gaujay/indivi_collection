@@ -69,6 +69,10 @@ namespace indivi
 {
 namespace detail
 {
+/*
+ * Metadata struct for group of 16 buckets.
+ * SIMD-accelerated, used by `flat_utable`.
+ */
 struct alignas(32) MetaGroup // actually aligned/init manually, see NewStorage
 {
   alignas(16) unsigned char hfrags[16] = {}; // 1-Byte hash fragments (0 means empty)
@@ -298,7 +302,9 @@ struct alignas(32) MetaGroup // actually aligned/init manually, see NewStorage
   }
 };
 
-
+/*
+ * Underlying class of `flat_umap` and `flat_uset`.
+ */
 template<
   class Key,
   class T,
@@ -630,9 +636,8 @@ public:
   const_iterator begin() const noexcept { return const_iterator::find_begin(mGroups.data, mValues.data, group_capa()); }
   const_iterator cbegin() const noexcept { return const_iterator::find_begin(mGroups.data, mValues.data, group_capa()); }
 
-  iterator end() noexcept { return iterator(); }
-  const_iterator end() const noexcept { return const_iterator(); }
-  const_iterator cend() const noexcept { return const_iterator(); }
+  static iterator end() noexcept { return iterator(); }
+  static const_iterator cend() noexcept { return const_iterator(); }
 
   // Capacity
   bool empty() const noexcept { return mSize == 0u; }

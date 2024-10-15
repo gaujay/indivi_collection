@@ -10,7 +10,7 @@ Includes Google Benchmark and Google Test support.
     - an associative container that stores unordered unique key-value pairs/keys
     - similar to `std::unordered_map`/`std::unordered_set`
     - open-addressing schema, with a dynamically allocated, consolidated array of values and metadata (capacity grows based on power of 2)
-    - each entry uses 2 additional bytes of metadata (to store overflow counters and distances from original buckets)
+    - each entry uses 2 additional bytes of metadata (to store hash fragments, overflow counters and distances from original buckets)
     - optimized for small sizes (starting at 2, container sizeof is 40 Bytes on 64-bits)
     - avoid the need for tombstone mechanism or rehashing on iterator erase (with a good hash function)
     - group buckets to rely on SIMD operations for speed (SSE2 or NEON are mandatory)

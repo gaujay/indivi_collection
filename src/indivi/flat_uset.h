@@ -19,12 +19,12 @@ namespace indivi
  * with a dynamically allocated, consolidated array of values and metadata (capacity grows based on power of 2).
  * It is optimized for small sizes (starting at 2, container sizeof is 40 Bytes on 64-bits).
  *
- * Each entry uses 2 additional bytes of metadata (to store overflow counters and distances from original buckets).
+ * Each entry uses 2 additional bytes of metadata (to store hash fragments, overflow counters and distances from original buckets).
  * Avoiding the need for a tombstone mechanism or rehashing on iterator erase (*with a good hash function).
  * By grouping buckets, it also relies on SIMD operations for speed (SSE2 or NEON are mandatory).
  *
  * Come with an optimized 64-bits hash function by default (see `hash.h`).
- * Iterators are invalidated on usual open-addressing operations, but never on erase.
+ * Iterators are invalidated on usual open-addressing operations (except the end iterator), but never on erase.
  * Search, insertion, and removal of elements have average constant time 𝓞(1) complexity.
  */
 template<
@@ -115,7 +115,7 @@ public:
   const_iterator cbegin() const noexcept { return mTable.cbegin(); }
 
   iterator end() noexcept { return mTable.end(); }
-  const_iterator end() const noexcept { return mTable.end(); }
+  const_iterator end() const noexcept { return mTable.cend(); }
   const_iterator cend() const noexcept { return mTable.cend(); }
 
   // Capacity
