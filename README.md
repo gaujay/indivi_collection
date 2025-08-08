@@ -11,11 +11,20 @@ Includes Google Benchmark and Google Test support.
     - similar to `std::unordered_map`/`std::unordered_set`
     - open-addressing schema, with a dynamically allocated, consolidated array of values and metadata (capacity grows based on power of 2)
     - each entry uses 2 additional bytes of metadata (to store hash fragments, overflow counters and distances from original buckets)
-    - optimized for small sizes (starting at 2, container sizeof is 40 Bytes on 64-bits)
+    - optimized for small sizes (starting at 2, container sizeof is 48 Bytes on 64-bits systems)
     - avoid the need for tombstone mechanism or rehashing on iterator erase (with a good hash function)
     - group buckets to rely on SIMD operations for speed (SSE2 or NEON are mandatory)
     - come with an optimized 64-bits hash function (based on [wyhash](https://github.com/wangyi-fudan/wyhash))
     - search, insertion, and removal of elements have average constant time 𝓞(1) complexity
+
+- `flat_wmap`/`flat_wset` (flat unaligned unordered map/set)
+    - same as flat_umap/uset but generally faster while using tombstones.
+    - optimized for lookup speed, little bit slower for re-inserting and iterating.
+    - use only 1 byte of metadata per entry (to store hash fragments).
+    - don't group buckets but still rely on SIMD (SSE2 or NEON).
+    - greatly minimize tombstone usage on erase.
+    - use lower fixed max load factor (0.8 Vs 0.875 for umap/uset)
+    - see 'bench/flat_unordered' readme for detailed comparison with others maps.
 
 - `sparque` (sparse deque)
 	- a sequence, non-contiguous and reversible container that allows fast random insertion and deletion (with basic exception safety)
@@ -76,3 +85,6 @@ Apache License 2.0
 Benchmarked third-party libraries:
 - [seq::tiered_vector](https://github.com/Thermadiag/seq): MIT License
 - [segmented_tree](https://github.com/det/segmented_tree): Boost Software License - Version 1.0
+
+Test utils third-party libraries:
+- [Romu Pseudorandom Number Generators](http://romu-random.org): Apache License - Version 2.0

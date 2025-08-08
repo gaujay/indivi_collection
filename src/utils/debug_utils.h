@@ -130,9 +130,10 @@ public:
   
   // Non-member functions
   friend bool operator<(const dClass& lhs, const dClass& rhs) { return lhs.val < rhs.val; }
+  friend std::ostream& operator<<(std::ostream &os, const dClass& d) { return os << d.val; }
+  
   friend bool operator==(const dClass& lhs, const dClass& rhs) { return lhs.val == rhs.val; }
   friend bool operator!=(const dClass& lhs, const dClass& rhs) { return !(lhs.val == rhs.val); }
-  friend std::ostream& operator<<(std::ostream &os, const dClass& d) { return os << d.val; }
   
   // Members
   int val;

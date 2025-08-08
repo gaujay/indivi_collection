@@ -5,6 +5,8 @@ include(GoogleTest)
 set(SOURCE_FILES_FLAT_UNORDERED
     test_flat_umap_main.cpp
     test_flat_uset_main.cpp
+    test_flat_wmap_main.cpp
+    test_flat_wset_main.cpp
     ${CMAKE_SOURCE_DIR}/src/utils/debug_utils.cpp
 )
 
