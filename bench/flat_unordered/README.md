@@ -12,9 +12,10 @@ https://github.com/gaujay/c_cpp_hash_tables_benchmark
 Change notes:
 - Only unordered maps are tested, but sets are expected to behave similarly
 - An additional benchmark was added ("re-insert after erase all") to showcase the effects of tombstones
-- Data type of long std::string (32-chars, no sso) replaces original c-string one.
-- Folly `F14ValueMap` was also added for comparison, as another SIMD based flat map without tombstones
-- Containers are benchmarked with their default hash function (instead of custom hash murmur3/FNV-1a)
+- Data type of long std::string (32-chars, no sso) replaces original c-string one
+- Folly `F14ValueMap` was also added for comparison, as another SIMD-based flat map without tombstones
+- Containers are benchmarked with their default hash function
+- Additional results with custom hash (murmur3/FNV-1a) for direct comparison
 
 ### Benchmark results
 
@@ -47,3 +48,9 @@ Libraries versions:
 ![MSVC_17](../../docs/flat_unordered/flat_unordered_msvc17.png)
 
 [Detailed graphs](../../docs/flat_unordered/flat_unordered_msvc17.html)
+
+#### LLVM 17 - Custom hash
+
+![LLVM_17_Custom](../../docs/flat_unordered/flat_unordered_llvm17_customhash.png)
+
+[Detailed graphs](../../docs/flat_unordered/flat_unordered_llvm17_customhash.html)
