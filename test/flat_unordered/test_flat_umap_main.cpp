@@ -1189,6 +1189,41 @@ TEST(FlatUMapTest, BadHash)
   }
 }
 
+TEST(FlatUMapTest, BadCounters)
+{
+  struct id_hash {
+    using is_avalanching = void;
+    size_t operator()(uint64_t k) const noexcept { return k; }
+  };
+
+  flat_umap<uint64_t, uint64_t, id_hash> fum;
+  fum.reserve(100);
+
+  auto const groups = fum.bucket_count() / 16;
+  unsigned shift = 64;
+  for (auto g = groups; g > 1; g /= 2)
+    --shift;
+  ASSERT_LT(shift, 64);
+
+  // top bits pick the group, low byte is the fingerprint, middle keeps keys distinct
+  auto key = [&](uint64_t home, uint64_t id, uint64_t fp) {
+    return (home << shift) | (id << 8U) | fp;
+  };
+
+  for (uint64_t g = 0; g < groups; ++g)
+  {
+    for (uint64_t id = 0; id < 16; ++id)
+      fum[key(g, id, 0x22)] = 0; // fill group g
+
+    fum[key(g, 100, 0x11)] = 0; // class 1, overflows past it
+    for (uint64_t id = 0; id < 16; ++id)
+      fum.erase(key(g, id, 0x22)); // fillers out, passer stays
+  }
+
+  // should stop after looping whole map
+  ASSERT_FALSE(fum.contains(key(0, 999, 0x11)));
+}
+
 TEST(FlatUMapTest, Stress)
 {
   {

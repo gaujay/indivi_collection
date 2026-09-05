@@ -1185,9 +1185,7 @@ private:
     std::size_t probLen = 1;
     std::size_t cmpCount = 0;
   #endif
-  #ifdef INDIVI_FLAT_U_QUAD_PROB
     size_type delta = 0u;
-  #endif
     do {
       const auto& group = mGroups.data[gIndex];
       int matchs = group.match_hfrag(hash);
@@ -1216,7 +1214,7 @@ private:
         while (matchs);
       }
       // not found
-      if (!group.get_overflow(hash))
+      if (!group.get_overflow(hash) || delta >= mGMask)
       {
       #ifdef INDIVI_FLAT_U_STATS
         mStats.prob_miss_len += probLen;
@@ -1230,16 +1228,15 @@ private:
     #ifdef INDIVI_FLAT_U_STATS
       ++probLen;
     #endif
+      ++delta;
     #ifdef INDIVI_FLAT_U_QUAD_PROB
-      gIndex = (gIndex + (++delta)) & mGMask;
+      gIndex = (gIndex + delta) & mGMask;
     #else
       gIndex += prob_delta(hash);
       gIndex &= mGMask;
     #endif
     }
-    while (gIndex <= mGMask); // non-infinite loop helps optimization
-
-    return { nullptr, nullptr, 0 };
+    while (true);
   }
 
   template< typename U >

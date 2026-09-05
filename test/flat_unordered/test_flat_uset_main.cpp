@@ -943,6 +943,41 @@ TEST(FlatUSetTest, BadHash)
   }
 }
 
+TEST(FlatUSetTest, BadCounters)
+{
+  struct id_hash {
+    using is_avalanching = void;
+    size_t operator()(uint64_t k) const noexcept { return k; }
+  };
+
+  flat_uset<uint64_t, id_hash> fus;
+  fus.reserve(100);
+
+  auto const groups = fus.bucket_count() / 16;
+  unsigned shift = 64;
+  for (auto g = groups; g > 1; g /= 2)
+    --shift;
+  ASSERT_LT(shift, 64);
+
+  // top bits pick the group, low byte is the fingerprint, middle keeps keys distinct
+  auto key = [&](uint64_t home, uint64_t id, uint64_t fp) {
+    return (home << shift) | (id << 8U) | fp;
+  };
+
+  for (uint64_t g = 0; g < groups; ++g)
+  {
+    for (uint64_t id = 0; id < 16; ++id)
+      fus.insert(key(g, id, 0x22)); // fill group g
+
+    fus.insert(key(g, 100, 0x11)); // class 1, overflows past it
+    for (uint64_t id = 0; id < 16; ++id)
+      fus.erase(key(g, id, 0x22)); // fillers out, passer stays
+  }
+
+  // should stop after looping whole set
+  ASSERT_FALSE(fus.contains(key(0, 999, 0x11)));
+}
+
 TEST(FlatUSetTest, Stress)
 {
   {
