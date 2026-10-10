@@ -10,6 +10,8 @@
 #include "indivi/detail/flat_wtable.h"
 
 #include <functional> // for std::equal_to
+#include <memory>     // for std::allocator
+#include <utility>    // for std::pair
 
 namespace indivi
 {
@@ -33,7 +35,8 @@ template<
   class Key,
   class T,
   class Hash = indivi::hash<Key>,
-  class KeyEqual = std::equal_to<Key> >
+  class KeyEqual = std::equal_to<Key>,
+  class Allocator = std::allocator<std::pair<const Key, T>> >
 class flat_wmap
 {
 public:
@@ -41,20 +44,21 @@ public:
   using mapped_type = T;
   using value_type = std::pair<const Key, T>;
   using size_type = std::size_t;
-  using difference_type = std::make_signed<size_type>::type;
+  using difference_type = typename std::make_signed<size_type>::type;
   using hasher = Hash;
   using key_equal = KeyEqual;
+  using allocator_type = Allocator;
   using reference = value_type&;
   using const_reference = const value_type&;
-  using pointer = value_type*;
-  using const_pointer = const value_type*;
+  using pointer = typename std::allocator_traits<Allocator>::pointer;
+  using const_pointer = typename std::allocator_traits<Allocator>::const_pointer;
 
 private:
   using nc_key_type = typename std::remove_const<Key>::type;
   using nc_mapped_type = typename std::remove_const<T>::type;
   using item_type = std::pair<nc_key_type, nc_mapped_type>;
   using init_type = item_type;
-  using flat_wtable = detail::flat_wtable<key_type, mapped_type, value_type, item_type, size_type, hasher, key_equal>;
+  using flat_wtable = detail::flat_wtable<key_type, mapped_type, value_type, item_type, size_type, hasher, key_equal, allocator_type>;
 
   // Members
   flat_wtable mTable;
@@ -73,26 +77,66 @@ public:
   flat_wmap() : flat_wmap(0)
   {}
 
-  explicit flat_wmap(size_type bucket_count, const Hash& hash = Hash(), const key_equal& equal = key_equal())
-    : mTable(bucket_count, hash, equal)
+  explicit flat_wmap(size_type bucket_count, const Hash& hash = Hash(), const key_equal& equal = key_equal(), const Allocator& alloc = Allocator())
+    : mTable(bucket_count, hash, equal, alloc)
+  {}
+
+  explicit flat_wmap(const Allocator& alloc)
+    : flat_wmap(0, Hash(), key_equal(), alloc)
+  {}
+
+  flat_wmap(size_type bucket_count, const Allocator& alloc)
+    : flat_wmap(bucket_count, Hash(), key_equal(), alloc)
+  {}
+
+  flat_wmap(size_type bucket_count, const Hash& hash, const Allocator& alloc)
+    : flat_wmap(bucket_count, hash, key_equal(), alloc)
   {}
 
   template< class InputIt >
-  flat_wmap(InputIt first, InputIt last, size_type bucket_count = 0, const Hash& hash = Hash(), const key_equal& equal = key_equal())
-    : mTable(first, last, bucket_count, hash, equal)
+  flat_wmap(InputIt first, InputIt last, size_type bucket_count = 0, const Hash& hash = Hash(), const key_equal& equal = key_equal(), const Allocator& alloc = Allocator())
+    : mTable(first, last, bucket_count, hash, equal, alloc)
   {}
 
-  flat_wmap(std::initializer_list<value_type> init, size_type bucket_count = 0, const Hash& hash = Hash(), const key_equal& equal = key_equal())
-    : mTable(init.begin(), init.end(), bucket_count, hash, equal)
+  template< class InputIt >
+  flat_wmap(InputIt first, InputIt last, size_type bucket_count, const Allocator& alloc)
+    : flat_wmap(first, last, bucket_count, Hash(), key_equal(), alloc)
+  {}
+
+  template< class InputIt >
+  flat_wmap(InputIt first, InputIt last, const Allocator& alloc)
+    : flat_wmap(first, last, 0, Hash(), key_equal(), alloc)
+  {}
+
+  flat_wmap(std::initializer_list<value_type> init, size_type bucket_count = 0, const Hash& hash = Hash(), const key_equal& equal = key_equal(), const Allocator& alloc = Allocator())
+    : mTable(init.begin(), init.end(), bucket_count, hash, equal, alloc)
+  {}
+
+  flat_wmap(std::initializer_list<value_type> init, size_type bucket_count, const Allocator& alloc)
+    : flat_wmap(init.begin(), init.end(), bucket_count, Hash(), key_equal(), alloc)
+  {}
+
+  flat_wmap(std::initializer_list<value_type> init, const Allocator& alloc)
+    : flat_wmap(init.begin(), init.end(), 0, Hash(), key_equal(), alloc)
   {}
 
   flat_wmap(const flat_wmap& other)
     : mTable(other.mTable)
   {}
 
-  flat_wmap(flat_wmap&& other)
-    noexcept(std::is_nothrow_move_constructible<flat_wtable>::value)
+  flat_wmap(const flat_wmap& other, const Allocator& alloc)
+    : mTable(other.mTable, alloc)
+  {}
+
+  flat_wmap(flat_wmap&& other) noexcept(
+      std::is_nothrow_move_constructible<Hash>::value &&
+      std::is_nothrow_move_constructible<key_equal>::value &&
+      std::is_nothrow_move_constructible<Allocator>::value)
     : mTable(std::move(other.mTable))
+  {}
+
+  flat_wmap(flat_wmap&& other, const Allocator& alloc)
+    : mTable(std::move(other.mTable), alloc)
   {}
 
   ~flat_wmap() = default;
@@ -103,7 +147,10 @@ public:
     mTable = other.mTable;
     return *this;
   }
-  flat_wmap& operator=(flat_wmap&& other) noexcept(std::is_nothrow_move_assignable<flat_wtable>::value)
+  flat_wmap& operator=(flat_wmap&& other) noexcept(
+      std::allocator_traits<Allocator>::propagate_on_container_move_assignment::value &&
+      std::is_nothrow_move_assignable<Hash>::value &&
+      std::is_nothrow_move_assignable<key_equal>::value)
   {
     mTable = std::move(other.mTable);
     return *this;
@@ -144,6 +191,7 @@ public:
   // Observers
   hasher hash_function() const { return mTable.hash_function();  }
   key_equal key_eq() const { return mTable.key_eq(); }
+  allocator_type get_allocator() const noexcept { return mTable.get_allocator(); }
 
   // Lookup
   T& at(const Key& key) { return mTable.at(key); }

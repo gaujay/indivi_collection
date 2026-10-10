@@ -277,4 +277,163 @@ typedef eClass<false, false, false, false, true, false, 1> eClassAsgCpy;
 typedef eClass<false, false, false, false, false, true, 1> eClassAsgMve;
 
 
+// Test Allocator
+template <typename T>
+struct TestAllocator
+{
+  using value_type = T;
+  using propagate_on_container_copy_assignment = std::true_type;
+  using propagate_on_container_move_assignment = std::true_type;
+  using propagate_on_container_swap = std::true_type;
+
+  int id = 0;
+  size_t* alloc_count = nullptr;
+  size_t* dealloc_count = nullptr;
+
+  TestAllocator() = default;
+  TestAllocator(int id, size_t* alloc = nullptr, size_t* dealloc = nullptr)
+    : id(id), alloc_count(alloc), dealloc_count(dealloc)
+  {}
+
+  template <typename U>
+  TestAllocator(const TestAllocator<U>& other) noexcept
+      : id(other.id), alloc_count(other.alloc_count), dealloc_count(other.dealloc_count) {}
+
+  T* allocate(size_t n) {
+    if (alloc_count) ++(*alloc_count);
+    return static_cast<T*>(::operator new(n * sizeof(T)));
+  }
+
+  void deallocate(T* p, size_t) noexcept {
+    if (dealloc_count) ++(*dealloc_count);
+    ::operator delete(p);
+  }
+
+  friend bool operator==(const TestAllocator& a, const TestAllocator& b) noexcept {
+    return a.id == b.id;
+  }
+  friend bool operator!=(const TestAllocator& a, const TestAllocator& b) noexcept {
+    return !(a == b);
+  }
+};
+
+template <typename T>
+struct NonPropagatingAllocator : public TestAllocator<T>
+{
+  using propagate_on_container_copy_assignment = std::false_type;
+  using propagate_on_container_move_assignment = std::false_type;
+  using propagate_on_container_swap = std::false_type;
+
+  using TestAllocator<T>::TestAllocator;
+
+  template <typename U>
+  NonPropagatingAllocator(const NonPropagatingAllocator<U>& other) noexcept
+    : TestAllocator<T>(other)
+  {}
+};
+
+template <typename T>
+struct ThrowingAllocator : public TestAllocator<T>
+{
+  bool* should_throw = nullptr;
+
+  using TestAllocator<T>::TestAllocator;
+
+  ThrowingAllocator(int id, size_t* alloc, size_t* dealloc, bool* throw_flag)
+    : TestAllocator<T>(id, alloc, dealloc), should_throw(throw_flag)
+  {}
+
+  template <typename U>
+  ThrowingAllocator(const ThrowingAllocator<U>& other) noexcept
+      : TestAllocator<T>(other), should_throw(other.should_throw) {}
+
+  T* allocate(size_t n) {
+    if (should_throw && *should_throw) {
+      throw std::bad_alloc();
+    }
+    return TestAllocator<T>::allocate(n);
+  }
+};
+
+template <typename T>
+struct SocccAllocator : public TestAllocator<T>
+{
+  using TestAllocator<T>::TestAllocator;
+
+  template <typename U>
+  SocccAllocator(const SocccAllocator<U>& other) noexcept : TestAllocator<T>(other) {}
+
+  // Override standard copy selection to assign a specific ID (999) to the copied container's allocator
+  SocccAllocator select_on_container_copy_construction() const {
+    SocccAllocator copy(*this);
+    copy.id = 999;
+    return copy;
+  }
+};
+
+template <typename T>
+struct MinimalAllocator
+{
+  using value_type = T;
+
+  MinimalAllocator() = default;
+
+  template <typename U>
+  MinimalAllocator(const MinimalAllocator<U>&) noexcept {}
+
+  T* allocate(size_t n) {
+    return static_cast<T*>(::operator new(n * sizeof(T)));
+  }
+
+  void deallocate(T* p, size_t) noexcept {
+    ::operator delete(p);
+  }
+
+  friend bool operator==(const MinimalAllocator&, const MinimalAllocator&) noexcept { return true; }
+  friend bool operator!=(const MinimalAllocator&, const MinimalAllocator&) noexcept { return false; }
+};
+
+template <typename T>
+struct CustomConstructAllocator : public TestAllocator<T>
+{
+  size_t* construct_count = nullptr;
+  size_t* destroy_count = nullptr;
+
+  using TestAllocator<T>::TestAllocator;
+
+  CustomConstructAllocator(int id, size_t* c, size_t* d)
+    : TestAllocator<T>(id), construct_count(c), destroy_count(d)
+  {}
+
+  template <typename U>
+  CustomConstructAllocator(const CustomConstructAllocator<U>& other) noexcept
+      : TestAllocator<T>(other),
+      construct_count(other.construct_count),
+      destroy_count(other.destroy_count) {}
+
+  template <typename U, typename... Args>
+  void construct(U* p, Args&&... args) {
+    if (construct_count) ++(*construct_count);
+    ::new (static_cast<void*>(p)) U(std::forward<Args>(args)...);
+  }
+
+  template <typename U>
+  void destroy(U* p) {
+    if (destroy_count) ++(*destroy_count);
+    p->~U();
+  }
+};
+
+template <typename T>
+struct AlwaysEqualAllocator : public TestAllocator<T>
+{
+  using is_always_equal = std::true_type;
+  using propagate_on_container_move_assignment = std::false_type; // Should be bypassed because is_always_equal is true
+
+  using TestAllocator<T>::TestAllocator;
+
+  template <typename U>
+  AlwaysEqualAllocator(const AlwaysEqualAllocator<U>& other) noexcept : TestAllocator<T>(other) {}
+};
+
 #endif // DEBUG_UTILS_H

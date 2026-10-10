@@ -124,6 +124,183 @@ TEST(FlatWSetTest, Constructor3)
   EXPECT_EQ(DbgClass::count, 0);
 }
 
+TEST(FlatWSetTest, AllocatorConstructors)
+{
+  using Alloc = TestAllocator<DbgClass>;
+  using CustomSet = flat_wset<DbgClass, std::hash<DbgClass>, std::equal_to<DbgClass>, Alloc>;
+  {
+    Alloc alloc1(101);
+
+    // Default construct with allocator
+    CustomSet fws1(alloc1);
+    EXPECT_EQ(fws1.get_allocator().id, 101);
+
+    // Bucket count + Hash + KeyEq + Allocator
+    CustomSet fws2(16, std::hash<DbgClass>(), std::equal_to<DbgClass>(), alloc1);
+    EXPECT_EQ(fws2.get_allocator().id, 101);
+    EXPECT_GE(fws2.bucket_count(), 16u);
+
+    // Range constructor + Allocator
+    std::vector<DbgClass> vec{1, 2, 3};
+    CustomSet fws3(vec.begin(), vec.end(), 0, std::hash<DbgClass>(), std::equal_to<DbgClass>(), alloc1);
+    EXPECT_EQ(fws3.get_allocator().id, 101);
+    EXPECT_EQ(fws3.size(), 3u);
+
+    // Initializer list + Allocator
+    CustomSet fws4({1, 2}, 0, std::hash<DbgClass>(), std::equal_to<DbgClass>(), alloc1);
+    EXPECT_EQ(fws4.get_allocator().id, 101);
+    EXPECT_EQ(fws4.size(), 2u);
+
+    // Copy construct with explicit extended allocator
+    CustomSet fws5(fws4, Alloc(202));
+    EXPECT_EQ(fws5.get_allocator().id, 202);
+    EXPECT_EQ(fws5.size(), 2u);
+
+    // Move construct with explicit extended allocator
+    CustomSet fws6(std::move(fws5), Alloc(303));
+    EXPECT_EQ(fws6.get_allocator().id, 303);
+    EXPECT_EQ(fws6.size(), 2u);
+  }
+  // No object leak
+  EXPECT_EQ(DbgClass::count, 0);
+}
+
+TEST(FlatWSetTest, AllocatorLifetimeAndPropagation)
+{
+  using Alloc = TestAllocator<DbgClass>;
+  using CustomSet = flat_wset<DbgClass, std::hash<DbgClass>, std::equal_to<DbgClass>, Alloc>;
+  {
+    size_t alloc_count = 0;
+    size_t dealloc_count = 0;
+
+    Alloc allocA(1, &alloc_count, &dealloc_count);
+    Alloc allocB(2, &alloc_count, &dealloc_count);
+
+    {
+      CustomSet fws1(allocA);
+      fws1.insert(10);
+      fws1.insert(20);
+      fws1.reserve(64); // triggers reallocation via allocator
+
+      EXPECT_GT(alloc_count, 0u);
+      EXPECT_GT(dealloc_count, 0u);
+
+      // Copy assignment with POCCA propagation
+      CustomSet fws2(allocB);
+      fws2 = fws1;
+      EXPECT_EQ(fws2.get_allocator().id, 1);
+
+      // Move assignment with POCMA propagation
+      CustomSet fws3(allocB);
+      fws3 = std::move(fws2);
+      EXPECT_EQ(fws3.get_allocator().id, 1);
+
+      // Swap with POCS propagation
+      CustomSet fws4(Alloc(4, &alloc_count, &dealloc_count));
+      fws4.swap(fws3);
+      EXPECT_EQ(fws3.get_allocator().id, 4);
+      EXPECT_EQ(fws4.get_allocator().id, 1);
+    }
+
+    // Ensure every allocation is balanced by a deallocation
+    EXPECT_EQ(alloc_count, dealloc_count);
+  }
+  // No object leak
+  EXPECT_EQ(DbgClass::count, 0);
+}
+
+TEST(FlatWSetTest, SelectOnContainerCopyConstruction)
+{
+  using Alloc = SocccAllocator<DbgClass>;
+  using CustomSet = flat_wset<DbgClass, std::hash<DbgClass>, std::equal_to<DbgClass>, Alloc>;
+  {
+    Alloc alloc(100);
+    CustomSet set1({1, 2, 3}, 0, std::hash<DbgClass>(), std::equal_to<DbgClass>(), alloc);
+
+    // Implicit copy construction must call select_on_container_copy_construction()
+    CustomSet set2(set1);
+
+    EXPECT_EQ(set1.get_allocator().id, 100);
+    EXPECT_EQ(set2.get_allocator().id, 999);
+    EXPECT_EQ(set2.size(), 3u);
+  }
+  EXPECT_EQ(DbgClass::count, 0);
+}
+
+TEST(FlatWSetTest, MinimalAllocatorInterface)
+{
+  using MinimalSet = flat_wset<int, std::hash<int>, std::equal_to<int>, MinimalAllocator<int>>;
+  {
+    MinimalSet set;
+    set.insert(10);
+    set.insert(20);
+
+    EXPECT_EQ(set.size(), 2u);
+    EXPECT_TRUE(set.contains(10));
+  }
+}
+
+TEST(FlatWSetTest, CustomConstructAndDestroyDelegation)
+{
+  size_t construct_count = 0;
+  size_t destroy_count = 0;
+
+  using Alloc = CustomConstructAllocator<DbgClass>;
+  using CustomSet = flat_wset<DbgClass, std::hash<DbgClass>, std::equal_to<DbgClass>, Alloc>;
+  {
+    Alloc alloc(1, &construct_count, &destroy_count);
+    CustomSet set(alloc);
+
+    set.insert(10);
+    set.insert(20);
+    set.erase(10);
+
+    EXPECT_GT(construct_count, 0u);
+    EXPECT_GT(destroy_count, 0u);
+  }
+
+  // Ensure every element constructed via allocator was destroyed via allocator
+  EXPECT_EQ(construct_count, destroy_count);
+}
+
+TEST(FlatWSetTest, AlwaysEqualOptimization)
+{
+  using Alloc = AlwaysEqualAllocator<DbgClass>;
+  using CustomSet = flat_wset<DbgClass, std::hash<DbgClass>, std::equal_to<DbgClass>, Alloc>;
+
+  {
+    CustomSet set1({1, 2, 3}, 0, std::hash<DbgClass>(), std::equal_to<DbgClass>(), Alloc(10));
+    CustomSet set2(Alloc(20));
+
+    // Even though POCMA is false, is_always_equal allows pointer-stealing move
+    set2 = std::move(set1);
+
+    EXPECT_EQ(set2.size(), 3u);
+  }
+  EXPECT_EQ(DbgClass::count, 0);
+}
+
+#ifdef INDIVI_CPP17
+#include <memory_resource>
+
+TEST(FlatWSetTest, PolymorphicMemoryResource)
+{
+  std::array<std::byte, 1024> stack_buffer;
+  std::pmr::monotonic_buffer_resource mem_pool(stack_buffer.data(), stack_buffer.size());
+
+  using PmrSet = flat_wset<int, std::hash<int>, std::equal_to<int>, std::pmr::polymorphic_allocator<int>>;
+  {
+    PmrSet set(&mem_pool);
+    set.insert(10);
+    set.insert(20);
+    set.insert(30);
+
+    EXPECT_EQ(set.size(), 3u);
+    EXPECT_TRUE(set.contains(20));
+  }
+}
+#endif
+
 TEST(FlatWSetTest, Assignment)
 {
   {
@@ -222,6 +399,53 @@ TEST(FlatWSetTest, Assignment2)
     EXPECT_TRUE(fws2.contains(6));
   }
   // No object leak
+  EXPECT_EQ(DbgClass::count, 0);
+}
+
+TEST(FlatWSetTest, NonPropagatingMoveAssignment)
+{
+  using Alloc = NonPropagatingAllocator<DbgClass>;
+  using CustomSet = flat_wset<DbgClass, std::hash<DbgClass>, std::equal_to<DbgClass>, Alloc>;
+  {
+    Alloc allocA(100);
+    Alloc allocB(200);
+
+    CustomSet setA({1, 2, 3}, 0, std::hash<DbgClass>(), std::equal_to<DbgClass>(), allocA);
+    CustomSet setB(allocB);
+
+    // Non-propagating move assignment with unequal allocators:
+    // setB MUST retain allocB (id 200) and cannot steal setA's buffer pointer.
+    setB = std::move(setA);
+
+    EXPECT_EQ(setB.get_allocator().id, 200);
+    EXPECT_EQ(setB.size(), 3u);
+  }
+  EXPECT_EQ(DbgClass::count, 0);
+}
+
+TEST(FlatWSetTest, AllocationFailureExceptionSafety)
+{
+  size_t alloc_count = 0, dealloc_count = 0;
+  bool should_throw = false;
+  using Alloc = ThrowingAllocator<DbgClass>;
+  using CustomSet = flat_wset<DbgClass, std::hash<DbgClass>, std::equal_to<DbgClass>, Alloc>;
+  {
+    Alloc alloc(1, &alloc_count, &dealloc_count, &should_throw);
+    CustomSet set(alloc);
+    set.insert(10);
+    set.insert(20);
+
+    // Enable failure on next allocation
+    should_throw = true;
+
+    EXPECT_THROW(set.reserve(1000), std::bad_alloc);
+
+    // Set must remain valid with pre-exception elements intact
+    EXPECT_EQ(set.size(), 2u);
+    EXPECT_TRUE(set.contains(10));
+    EXPECT_TRUE(set.contains(20));
+  }
+  EXPECT_EQ(alloc_count, dealloc_count);
   EXPECT_EQ(DbgClass::count, 0);
 }
 

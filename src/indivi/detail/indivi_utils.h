@@ -9,6 +9,8 @@
 #include "indivi/detail/indivi_defines.h"
 
 #include <cassert>
+#include <cstddef>
+#include <cstdint>
 #include <type_traits>
 #include <utility>
 
@@ -97,6 +99,34 @@ namespace detail
     return 31 ^ __builtin_clz((unsigned int)v);
   #endif
   }
+
+  // Empty Base Optimization
+  template <typename T, std::size_t Tag, bool = std::is_empty<T>::value && !std::is_final<T>::value>
+  struct EboWrapper;
+
+  // Specialization for empty, non-final types (Applies EBO)
+  template <typename T, std::size_t Tag>
+  struct EboWrapper<T, Tag, true> : public T
+  {
+    EboWrapper(const T& t) : T(t) {}
+    EboWrapper(T&& t) noexcept(std::is_nothrow_move_constructible<T>::value) : T(std::move(t)) {}
+
+    T& get() noexcept { return *this; }
+    const T& get() const noexcept { return *this; }
+  };
+
+  // Specialization for stateful or final types (Uses composition)
+  template <typename T, std::size_t Tag>
+  struct EboWrapper<T, Tag, false>
+  {
+    T m_val;
+
+    EboWrapper(const T& t) : m_val(t) {}
+    EboWrapper(T&& t) noexcept(std::is_nothrow_move_constructible<T>::value) : m_val(std::move(t)) {}
+
+    T& get() noexcept { return m_val; }
+    const T& get() const noexcept { return m_val; }
+  };
 
 namespace traits
 {

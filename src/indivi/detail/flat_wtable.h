@@ -114,7 +114,7 @@ namespace MetaWGroup
     };
     return (int)word[(unsigned char)hash];
   }
-  
+
   static inline uint8_t* empty_group() noexcept
   {
     // 16+1+1 as mShift is 'sizeof(size_type) - 1' when empty (so index is 0 or 1)
@@ -126,13 +126,13 @@ namespace MetaWGroup
     };
     return const_cast<uint8_t*>(sEmptyGroup);
   }
-  
+
 #ifdef INDIVI_SIMD_SSE2
   static inline __m128i load_hfrags(const uint8_t* hfrags) noexcept
   {
     return _mm_loadu_si128(reinterpret_cast<const __m128i*>(hfrags));
   }
-  
+
   static inline int match_hfrag(__m128i hfrags, std::size_t hash) noexcept
   {
     return _mm_movemask_epi8(
@@ -144,13 +144,13 @@ namespace MetaWGroup
     return _mm_movemask_epi8(
         _mm_cmpeq_epi8(hfrags, _mm_set1_epi32(EMPTY_FRAGS))); // == empty
   }
-  
+
   static inline int match_empty(const uint8_t* hfrags) noexcept
   {
     return _mm_movemask_epi8(
         _mm_cmpeq_epi8(load_hfrags(hfrags), _mm_set1_epi32(EMPTY_FRAGS))); // == empty
   }
-  
+
   static inline int match_available(const uint8_t* hfrags) noexcept
   {
     return _mm_movemask_epi8(
@@ -173,7 +173,7 @@ namespace MetaWGroup
     uint8x16_t vmask = vandq_u8(vld1q_u8(mask), v);
     uint8x8x2_t vzip = vzip_u8(vget_low_u8(vmask), vget_high_u8(vmask));
     uint16x8_t vmix = vreinterpretq_u16_u8(vcombine_u8(vzip.val[0], vzip.val[1]));
-    
+
   #ifdef INDIVI_ARCH_ARM64
     return vaddvq_u16(vmix);
   #else
@@ -181,30 +181,30 @@ namespace MetaWGroup
     return int(vgetq_lane_u64(vsum, 0)) + int(vgetq_lane_u64(vsum, 1));
   #endif
   }
-  
+
   static inline int8x16_t load_hfrags(const uint8_t* hfrags) noexcept
   {
     return vld1q_s8(reinterpret_cast<const int8_t*>(hfrags));
   }
-  
+
   static inline int match_hfrag(int8x16_t hfrags, std::size_t hash) noexcept
   {
     return mm_movemask_epi8(
         vceqq_s8(hfrags, vdupq_n_s8((int8_t)match_word(hash))));
   }
-  
+
   static inline int match_empty(int8x16_t hfrags) noexcept
   {
     return mm_movemask_epi8(
         vceqq_s8(hfrags, vdupq_n_s8((int8_t)EMPTY_FRAG)));
   }
-  
+
   static inline int match_empty(const uint8_t* hfrags) noexcept
   {
     return mm_movemask_epi8(
         vceqq_s8(load_hfrags(hfrags), vdupq_n_s8((int8_t)EMPTY_FRAG)));
   }
-  
+
   static inline int match_available(const uint8_t* hfrags) noexcept
   {
     return mm_movemask_epi8(
@@ -221,7 +221,7 @@ namespace MetaWGroup
   {
     INDIVI_WTABLE_ASSERT(index <= mask);
     INDIVI_WTABLE_ASSERT((int8_t)groups[index] >= TOMBSTONE_FRAG);
-    
+
     uint8_t hfrag = (uint8_t)match_word(hash);
     bool wasTombstone = groups[index] == TOMBSTONE_FRAG;
     groups[index] = hfrag;
@@ -236,7 +236,7 @@ namespace MetaWGroup
     // if not, then no need to use a tombstone (i.e. never caused probe hopping)
     INDIVI_WTABLE_ASSERT(index <= mask);
     INDIVI_WTABLE_ASSERT((int8_t)groups[index] < TOMBSTONE_FRAG);
-    
+
     std::size_t leftIdx = (index - 16u) & mask;
     int leftEmpties = match_empty(groups + leftIdx); // not including self
     int rightEmpties = match_empty(groups + index);  // including self
@@ -245,7 +245,7 @@ namespace MetaWGroup
     int leftNSize = last_bit_index(leftEmpties);   // before self (in [15,0])
     int rightSize = first_bit_index(rightEmpties); // after and including self (in [1,16])
     bool needTombstone = rightSize > leftNSize; // simplification of 'rightSize + (15 - leftNSize) >= 16'
-    
+
     uint8_t val = needTombstone ? TOMBSTONE_FRAG : EMPTY_FRAG;
     groups[index] = val;
     std::size_t extra = (index >= 15) ? 0u : mask + 1; // sync first group duplicate at end
@@ -264,7 +264,8 @@ template<
   class item_type,
   class size_type,
   class Hash,
-  class KeyEqual >
+  class KeyEqual,
+  class Allocator >
 class flat_wtable
 {
 public:
@@ -273,15 +274,19 @@ public:
   using difference_type = typename std::make_signed<size_type>::type;
   using hasher = Hash;
   using key_equal = KeyEqual;
+  using allocator_type = Allocator;
+  using alloc_traits = std::allocator_traits<Allocator>;
   using iter_reference = typename std::conditional<std::is_same<key_type, value_type>::value, const key_type&, value_type&>::type;
   using iter_const_reference = const value_type&; // for flat_wset, iter_reference is also const
-  using iter_pointer = value_type*;
-  using iter_const_pointer = const value_type*;
+  using iter_pointer = typename std::allocator_traits<Allocator>::pointer;
+  using iter_const_pointer = typename std::allocator_traits<Allocator>::const_pointer;
 
 private:
   using init_type = item_type;
   using insert_type = std::pair<typename std::remove_const<Key>::type, const mapped_type>;
   using storage_type = typename std::aligned_storage<sizeof(item_type), alignof(item_type)>::type;
+  using storage_allocator_type = typename std::allocator_traits<Allocator>::template rebind_alloc<storage_type>;
+  using storage_alloc_traits = std::allocator_traits<storage_allocator_type>;
   using mixer = typename std::conditional<hash_is_avalanching<Hash>::value, no_mix, bit_mix>::type;
 
   static constexpr float MAX_LOAD_FACTOR{ 0.8f };
@@ -317,32 +322,55 @@ private:
     size_type index;
   };
 
-  struct Groups : Hash // empty base optim
+  struct Groups : Hash // empty base optimization
   {
     uint8_t* data = MetaWGroup::empty_group(); // static const dummy
 
     Groups(const Hash& hash) : Hash(hash) {}
     Groups(const Groups& groups) : Hash(groups) {}
     Groups(Groups&& groups) noexcept(std::is_nothrow_move_constructible<Hash>::value)
-      : Hash(std::move(groups.hash_move())), data(groups.data) {}
+      : Hash(std::move(groups.hash_move()))
+      , data(groups.data)
+    {}
 
     Hash& hash() noexcept { return *this; }
     const Hash& hash() const noexcept { return *this; }
     Hash&& hash_move() noexcept { return std::move(hash()); }
   };
 
-  struct Values : KeyEqual // empty base optim
+  struct Values : EboWrapper<KeyEqual, 0>, EboWrapper<storage_allocator_type, 1> // empty base optimization
   {
     item_type* data = nullptr;
 
-    Values(const KeyEqual& equal) : KeyEqual(equal) {}
-    Values(const Values& values) : KeyEqual(values) {}
-    Values(Values&& values) noexcept(std::is_nothrow_move_constructible<KeyEqual>::value)
-      : KeyEqual(std::move(values.equal_move())), data(values.data) {}
+    Values(const KeyEqual& equal, const Allocator& alloc)
+      : EboWrapper<KeyEqual, 0>(equal)
+      , EboWrapper<storage_allocator_type, 1>(alloc)
+    {}
 
-    KeyEqual& equal() noexcept { return *this; }
-    const KeyEqual& equal() const noexcept { return *this; }
+    Values(KeyEqual&& equal, const Allocator& alloc)
+      : EboWrapper<KeyEqual, 0>(std::move(equal))
+      , EboWrapper<storage_allocator_type, 1>(alloc)
+    {}
+
+    Values(const Values& values)
+      : EboWrapper<KeyEqual, 0>(values.equal())
+      , EboWrapper<storage_allocator_type, 1>(values.alloc())
+    {}
+
+    Values(Values&& values)
+        noexcept(std::is_nothrow_move_constructible<KeyEqual>::value && std::is_nothrow_move_constructible<storage_allocator_type>::value)
+      : EboWrapper<KeyEqual, 0>(std::move(values.equal_move()))
+      , EboWrapper<storage_allocator_type, 1>(std::move(values.alloc_move()))
+      , data(values.data)
+    {}
+
+    KeyEqual& equal() noexcept { return EboWrapper<KeyEqual, 0>::get(); }
+    const KeyEqual& equal() const noexcept { return EboWrapper<KeyEqual, 0>::get(); }
     KeyEqual&& equal_move() noexcept { return std::move(equal()); }
+
+    storage_allocator_type& alloc() noexcept { return EboWrapper<storage_allocator_type, 1>::get(); }
+    const storage_allocator_type& alloc() const noexcept { return EboWrapper<storage_allocator_type, 1>::get(); }
+    storage_allocator_type&& alloc_move() noexcept { return std::move(alloc()); }
 
     value_type* cdata() const noexcept { return reinterpret_cast<value_type*>(data); }
   };
@@ -360,6 +388,20 @@ private:
   const Hash& hash() const noexcept { return mGroups.hash(); }
   KeyEqual& equal() noexcept { return mValues.equal(); }
   const KeyEqual& equal() const noexcept { return mValues.equal(); }
+  storage_allocator_type& storage_alloc() noexcept { return mValues.alloc(); }
+  const storage_allocator_type& storage_alloc() const noexcept { return mValues.alloc(); }
+
+  template< typename P, class... Args >
+  void construct_item(P* p, Args&&... args)
+  {
+    storage_alloc_traits::construct(storage_alloc(), p, std::forward<Args>(args)...);
+  }
+
+  template< typename P >
+  void destroy_item(P* p)
+  {
+    storage_alloc_traits::destroy(storage_alloc(), p);
+  }
 
 public:
   template <typename Pointer, typename Reference>
@@ -380,7 +422,7 @@ public:
     const value_type* mValueLast = nullptr;
 
     Iterator(const uint8_t* group, item_type* value, item_type* valueLast)
-      : mGroup(group), mValue(reinterpret_cast<value_type*>(value)), mValueLast(reinterpret_cast<value_type*>(valueLast))
+      : mGroup(group), mValue(reinterpret_cast<value_type*>(value)), mValueLast(reinterpret_cast<value_type*>(valueLast)) // non-strict-aliasing of const
     {}
 
     static Iterator find_begin(const uint8_t* groups, item_type* values, size_type mask)
@@ -408,7 +450,7 @@ public:
         mGroup += idx;
         mValue += idx;
         mSets >>= idx; // remove match
-        
+
         mValue = (mValue <= mValueLast) ? mValue : nullptr; // end
         return *this;
       }
@@ -427,7 +469,7 @@ public:
       mGroup += idx;
       mValue += idx;
       mSets >>= ++idx; // remove match
-      
+
       mValue = (mValue <= mValueLast) ? mValue : nullptr; // end
       return *this;
     }
@@ -467,16 +509,17 @@ public:
   flat_wtable() : flat_wtable(0)
   {}
 
-  explicit flat_wtable(size_type bucket_count, const Hash& hash = Hash(), const key_equal& equal = key_equal())
+  explicit flat_wtable(size_type bucket_count, const Hash& hash = Hash(), const key_equal& equal = key_equal(), const Allocator& alloc = Allocator())
     : mGroups(hash)
-    , mValues(equal)
+    , mValues(equal, alloc)
   {
     rehash(bucket_count);
   }
 
   template< class InputIt >
-  flat_wtable(InputIt first, InputIt last, size_type bucket_count = 0, const Hash& hash = Hash(), const key_equal& equal = key_equal())
-    : flat_wtable(bucket_count, hash, equal)
+  flat_wtable(InputIt first, InputIt last, size_type bucket_count = 0, const Hash& hash = Hash(),
+      const key_equal& equal = key_equal(), const Allocator& alloc = Allocator())
+    : flat_wtable(bucket_count, hash, equal, alloc)
   {
     try {
       insert(first, last);
@@ -487,19 +530,29 @@ public:
     }
   }
 
-  flat_wtable(const std::initializer_list<value_type>& init, size_type bucket_count = 0, const Hash& hash = Hash(), const key_equal& equal = key_equal())
-    : flat_wtable(init.begin(), init.end(), bucket_count, hash, equal)
+  flat_wtable(const std::initializer_list<value_type>& init, size_type bucket_count = 0, const Hash& hash = Hash(),
+      const key_equal& equal = key_equal(), const Allocator& alloc = Allocator())
+    : flat_wtable(init.begin(), init.end(), bucket_count, hash, equal, alloc)
   {}
 
   flat_wtable(const flat_wtable& other)
     : mGroups(other.mGroups)
-    , mValues(other.mValues)
+    , mValues(other.equal(), alloc_traits::select_on_container_copy_construction(other.get_allocator()))
   {
     copy_content(other);
   }
 
-  flat_wtable(flat_wtable&& other)
-    noexcept(std::is_nothrow_move_constructible<Groups>::value && std::is_nothrow_move_constructible<Values>::value)
+  flat_wtable(const flat_wtable& other, const Allocator& alloc)
+    : mGroups(other.mGroups)
+    , mValues(other.equal(), alloc)
+  {
+    copy_content(other);
+  }
+
+  flat_wtable(flat_wtable&& other) noexcept(
+      std::is_nothrow_move_constructible<Hash>::value &&
+      std::is_nothrow_move_constructible<key_equal>::value &&
+      std::is_nothrow_move_constructible<storage_allocator_type>::value)
     : mSize(other.mSize)
     , mShift(other.mShift)
     , mGMask(other.mGMask)
@@ -515,6 +568,14 @@ public:
     other.mValues.data = nullptr;
   }
 
+  flat_wtable(flat_wtable&& other, const Allocator& alloc)
+    : mGroups(std::move(other.mGroups))
+    , mValues(std::move(other.equal()), alloc)
+  {
+    mGroups.data = MetaWGroup::empty_group(); // allocators may differs: let move_construct_alloc decide
+    move_construct_alloc(std::move(other));
+  }
+
   ~flat_wtable()
   {
     destroy();
@@ -527,41 +588,76 @@ public:
     {
       clear();
 
+      using pocca = typename alloc_traits::propagate_on_container_copy_assignment;
+      if (pocca::value)
+      {
+        if (storage_alloc() != other.storage_alloc())
+        {
+          destroy_empty();
+          storage_alloc() = other.storage_alloc();
+        }
+      }
+
       hash()  = other.hash();
-      equal() = other.equal(); // if this throws, state might be inconsistent
+      equal() = other.equal();
 
       copy_content(other);
     }
   }
 
-  void operator=(flat_wtable&& other) noexcept(std::is_nothrow_move_assignable<Hash>::value && std::is_nothrow_move_assignable<KeyEqual>::value)
+  void operator=(flat_wtable&& other) noexcept(
+      storage_alloc_traits::propagate_on_container_move_assignment::value &&
+      std::is_nothrow_move_assignable<Hash>::value &&
+      std::is_nothrow_move_assignable<key_equal>::value)
   {
     if (this != std::addressof(other))
     {
-      destroy();
-      mSize = 0u;
-      mShift = EMPTY_SHIFT;
-      mGMask = 0u;
-      mMaxSize = 0u;
-      mGroups.data = MetaWGroup::empty_group();
-      mValues.data = nullptr;
+      using pocma = typename storage_alloc_traits::propagate_on_container_move_assignment;
 
-      hash()  = std::move(other.hash());
-      equal() = std::move(other.equal()); // if this throws, state might be inconsistent
+      if (pocma::value || storage_alloc() == other.storage_alloc())
+      {
+        destroy();
+        mSize = 0u;
+        mShift = EMPTY_SHIFT;
+        mGMask = 0u;
+        mMaxSize = 0u;
 
-      mSize = other.mSize;
-      mShift = other.mShift;
-      mGMask = other.mGMask;
-      mMaxSize = other.mMaxSize;
-      mGroups.data = other.mGroups.data;
-      mValues.data = other.mValues.data;
+        if (pocma::value)
+          storage_alloc() = std::move(other.storage_alloc());
 
-      other.mSize = 0u;
-      other.mShift = EMPTY_SHIFT;
-      other.mGMask = 0u;
-      other.mMaxSize = 0u;
-      other.mGroups.data = MetaWGroup::empty_group();
-      other.mValues.data = nullptr;
+        hash()  = std::move(other.hash());
+        equal() = std::move(other.equal());
+
+        mSize = other.mSize;
+        mShift = other.mShift;
+        mGMask = other.mGMask;
+        mMaxSize = other.mMaxSize;
+        mGroups.data = other.mGroups.data;
+        mValues.data = other.mValues.data;
+
+        other.mSize = 0u;
+        other.mShift = EMPTY_SHIFT;
+        other.mGMask = 0u;
+        other.mMaxSize = 0u;
+        other.mGroups.data = MetaWGroup::empty_group();
+        other.mValues.data = nullptr;
+      }
+      else
+      {
+        clear();
+        hash()  = std::move(other.hash());
+        equal() = std::move(other.equal());
+
+        if (!other.empty())
+        {
+          reserve(other.mSize);
+          other.uc_for_each([&](item_type* pValue) {
+            insert_unique(std::move(*pValue));
+            ++mSize;
+          });
+          other.clear();
+        }
+      }
     }
   }
 
@@ -623,6 +719,7 @@ public:
   // Obervers
   hasher hash_function() const { return hash(); }
   key_equal key_eq() const { return equal(); }
+  allocator_type get_allocator() const noexcept { return allocator_type(storage_alloc()); }
 
   // Lookup
   mapped_type& at(const Key& key)
@@ -633,7 +730,7 @@ public:
     Location loc = find_impl(hash, gIndex, key);
     if (!loc.value)
       throw std::out_of_range("flat_wtable::at");
-  
+
     return loc.value->second;
   }
   const mapped_type& at(const Key& key) const
@@ -644,7 +741,7 @@ public:
     Location loc = find_impl(hash, gIndex, key);
     if (!loc.value)
       throw std::out_of_range("flat_wtable::at");
-  
+
     return loc.value->second;
   }
 
@@ -695,9 +792,9 @@ public:
     if (mValues.data)
     {
       uc_for_each([&](item_type* pValue) {
-        pValue->~item_type();
+        destroy_item(pValue);
       });
-      
+
       size_type capa = mGMask + 1u;
       std::memset((void*)mGroups.data, MetaWGroup::EMPTY_FRAG, sizeof(uint8_t) * (capa + 15u)); // for extra group, not including sentinel
       INDIVI_WTABLE_ASSERT(mGroups.data[sizeof(uint8_t) * (capa + 15u)] == MetaWGroup::SENTINEL_FRAG);
@@ -819,8 +916,21 @@ public:
   }
 
   void swap(flat_wtable& other)
-    noexcept(traits::is_nothrow_swappable<Hash>::value && traits::is_nothrow_swappable<key_equal>::value)
+    noexcept(traits::is_nothrow_swappable<Hash>::value &&
+             traits::is_nothrow_swappable<key_equal>::value &&
+            (!alloc_traits::propagate_on_container_swap::value || traits::is_nothrow_swappable<storage_allocator_type>::value))
   {
+    using pocs = typename alloc_traits::propagate_on_container_swap;
+    if (pocs::value)
+    {
+      using std::swap;
+      swap(storage_alloc(), other.storage_alloc());
+    }
+    else
+    {
+      INDIVI_WTABLE_ASSERT(get_allocator() == other.get_allocator());
+    }
+
     using std::swap;
     swap(hash(),  other.hash());
     swap(equal(), other.equal());
@@ -995,13 +1105,13 @@ private:
   {
     return hash >> shift; // keep (64 - n) highest bits
   }
-  
+
   static inline constexpr size_type capa_to_maxsize(size_type capa) noexcept
   {
     return (capa > 16) ? (size_type)(capa * MAX_LOAD_FACTOR)
                : (capa < 8) ? capa : capa - 1u; // force at least one empty in single group
   }
-  
+
   static inline unsigned int gmask_to_setsmask(size_type gMask) noexcept
   {
     unsigned int maskShift = std::min((unsigned int)(gMask + 1u), 16u);
@@ -1035,8 +1145,9 @@ private:
     INDIVI_WTABLE_ASSERT(pos.mGroup);
     INDIVI_WTABLE_ASSERT(pos.mValue);
     INDIVI_WTABLE_ASSERT(pos.mSets >= 0 && pos.mSets <= 0xFFFF);
-    INDIVI_WTABLE_ASSERT(pos.mValueLast == mValues.cdata() + mGMask);
-    INDIVI_WTABLE_ASSERT(pos.mValue >= mValues.cdata() && pos.mValue < mValues.cdata() + bucket_count());
+    INDIVI_WTABLE_ASSERT(pos.mValueLast == reinterpret_cast<const value_type*>(mValues.cdata() + mGMask));
+    INDIVI_WTABLE_ASSERT(pos.mValue >= reinterpret_cast<const value_type*>(mValues.cdata())
+                      && pos.mValue <  reinterpret_cast<const value_type*>(mValues.cdata() + bucket_count()));
     return true;
   }
 #else
@@ -1110,29 +1221,38 @@ private:
     if (mValues.data)
     {
       uc_for_each([&](item_type* pValue) {
-        pValue->~item_type();
+        destroy_item(pValue);
       });
-      delete[] reinterpret_cast<storage_type*>(mValues.data);
+      storage_alloc_traits::deallocate(storage_alloc(), reinterpret_cast<storage_type*>(mValues.data),
+                                       NewStorage::storageCapa(mGMask + 1u, mGMask + 1u + 16u));
     }
   }
-  
+
   void destroy_empty()
   {
     INDIVI_WTABLE_ASSERT(empty());
     if (mValues.data)
-      delete[] reinterpret_cast<storage_type*>(mValues.data);
+    {
+      storage_alloc_traits::deallocate(storage_alloc(), reinterpret_cast<storage_type*>(mValues.data),
+                                       NewStorage::storageCapa(mGMask + 1u, mGMask + 1u + 16u));
+      mValues.data = nullptr;
+      mGroups.data = MetaWGroup::empty_group();
+      mGMask = 0u;
+      mShift = EMPTY_SHIFT;
+      mMaxSize = 0u;
+    }
   }
-  
+
   iterator as_iter(const Location& loc) const noexcept
   {
     return iterator(mGroups.data + loc.index, loc.value, mValues.data + mGMask);
   }
-  
+
   const_iterator as_const_iter(const Location& loc) const noexcept
   {
     return const_iterator(mGroups.data + loc.index, loc.value, mValues.data + mGMask);
   }
-  
+
   Location find_impl(std::size_t hash, size_type index, const Key& key) const
   {
   #ifdef INDIVI_FLAT_W_STATS
@@ -1212,9 +1332,9 @@ private:
         int idx = first_bit_index(avails);
         size_type valIdx = (index + idx) & mGMask;
         item_type* pValue = &mValues.data[valIdx];
-        ::new (pValue) item_type(std::forward<U>(value));
+        construct_item(pValue, std::forward<U>(value));
         ++mSize;
-        
+
         bool wasTombstone = MetaWGroup::set_hfrag(mGroups.data, hash, valIdx, mGMask);
         mMaxSize += wasTombstone;
         return { pValue, valIdx };
@@ -1243,9 +1363,9 @@ private:
         int idx = first_bit_index(avails);
         size_type valIdx = (index + idx) & mGMask;
         item_type* pValue = &mValues.data[valIdx];
-        ::new (pValue) item_type(std::piecewise_construct,
-                                 std::forward_as_tuple(std::forward<U>(key)),
-                                 std::forward_as_tuple(std::forward<Args>(args)...));
+        construct_item(pValue, std::piecewise_construct,
+                               std::forward_as_tuple(std::forward<U>(key)),
+                               std::forward_as_tuple(std::forward<Args>(args)...));
         ++mSize;
 
         bool wasTombstone = MetaWGroup::set_hfrag(mGroups.data, hash, valIdx, mGMask);
@@ -1420,7 +1540,7 @@ private:
         int idx = first_bit_index(avails);
         size_type realIdx = (index + idx) & gMask;
         item_type* pValue = &values[realIdx];
-        ::new (pValue) item_type(std::forward<U>(value));
+        construct_item(pValue, std::forward<U>(value));
 
         MetaWGroup::set_hfrag(groups, hash, realIdx, gMask);
         return;
@@ -1447,7 +1567,7 @@ private:
     size_type index = hash_position(hash, shift);
 
     item_type* pValue = &values[index];
-    ::new (pValue) item_type(std::forward<U>(value));
+    construct_item(pValue, std::forward<U>(value));
 
     MetaWGroup::set_hfrag(groups, hash, index, gMask);
     return { pValue, index };
@@ -1459,9 +1579,9 @@ private:
     size_type index = hash_position(hash, shift);
 
     item_type* pValue = &values[index];
-    ::new (pValue) item_type(std::piecewise_construct,
-                             std::forward_as_tuple(std::forward<U>(key)),
-                             std::forward_as_tuple(std::forward<Args>(args)...));
+    construct_item(pValue, std::piecewise_construct,
+                           std::forward_as_tuple(std::forward<U>(key)),
+                           std::forward_as_tuple(std::forward<Args>(args)...));
 
     MetaWGroup::set_hfrag(groups, hash, index, gMask);
     return { pValue, index };
@@ -1470,7 +1590,7 @@ private:
   void erase_impl(const Location& loc)
   {
     bool addedTombstone = MetaWGroup::reset_hfrag(mGroups.data, loc.index, mGMask);
-    loc.value->~item_type();
+    destroy_item(loc.value);
     INDIVI_WTABLE_ASSERT(mSize);
     INDIVI_WTABLE_ASSERT(mMaxSize);
     --mSize;
@@ -1500,7 +1620,7 @@ private:
       try
       {
         other.uc_for_each([&](const item_type* otValue) {
-          ::new (mValues.data + (otValue - other.mValues.data)) item_type(*otValue);
+          construct_item(mValues.data + (otValue - other.mValues.data), *otValue);
           ++ctr_count;
         });
       }
@@ -1510,7 +1630,7 @@ private:
         {
           other.uc_each_while([&](const item_type* otValue) {
             item_type* pValue = mValues.data + (otValue - other.mValues.data);
-            pValue->~item_type();
+            destroy_item(pValue);
             return --ctr_count;
           });
         }
@@ -1552,13 +1672,53 @@ private:
     }
   }
 
+  void move_construct_alloc(flat_wtable&& other)
+  {
+    if (get_allocator() == other.get_allocator())
+    {
+      mSize = other.mSize;
+      mShift = other.mShift;
+      mGMask = other.mGMask;
+      mMaxSize = other.mMaxSize;
+      mGroups.data = other.mGroups.data;
+      mValues.data = other.mValues.data;
+
+      other.mSize = 0u;
+      other.mShift = EMPTY_SHIFT;
+      other.mGMask = 0u;
+      other.mMaxSize = 0u;
+      other.mGroups.data = MetaWGroup::empty_group();
+      other.mValues.data = nullptr;
+    }
+    else
+    {
+      if (!other.empty())
+      {
+        reserve(other.mSize);
+        try
+        {
+          other.uc_for_each([&](item_type* pValue) {
+            insert_unique(std::move(*pValue));
+            ++mSize;
+          });
+          other.clear();
+        }
+        catch (...)
+        {
+          destroy();
+          throw;
+        }
+      }
+    }
+  }
+
   void move_to(uint8_t* newGroups, item_type* newValues, size_type newShift, size_type newGMask)
   {
     try
     {
       uc_for_each([&](item_type* pValue) {
         insert_unique(newGroups, newValues, newShift, newGMask, std::move(*pValue));
-        pValue->~item_type();
+        destroy_item(pValue);
       });
     }
     catch (...)
@@ -1567,7 +1727,7 @@ private:
       item_type* pValue = newValues;
       uint8_t* pGroup = newGroups;
       uint8_t* last = pGroup + newGMask + 1;
-      unsigned int setsMask = gmask_to_setsmask(mGMask);
+      unsigned int setsMask = gmask_to_setsmask(newGMask);
       for (; pGroup != last; pGroup += 16, pValue += 16)
       {
         int idx = 0;
@@ -1575,7 +1735,7 @@ private:
         while (sets)
         {
           if (sets & 0x01)
-            pValue[idx].~item_type();
+            destroy_item(&pValue[idx]);
 
           sets >>= 1;
           ++idx;
@@ -1588,16 +1748,26 @@ private:
   struct NewStorage // exception-safe helper
   {
     size_type itemsCapa;
-    std::unique_ptr<storage_type[]> data; // contains items then 16-aligned groups
+    size_type totalStorageCapa;
+    storage_type* data;
+    storage_allocator_type& alloc;
 
-    NewStorage(size_type itemsCapa_, size_type groupsCapa_)
+    NewStorage(size_type itemsCapa_, size_type groupsCapa_, storage_allocator_type& alloc_)
       : itemsCapa(itemsCapa_)
-      , data(new storage_type[storageCapa(itemsCapa_, groupsCapa_)])
+      , totalStorageCapa(storageCapa(itemsCapa_, groupsCapa_))
+      , data(storage_alloc_traits::allocate(alloc_, totalStorageCapa))
+      , alloc(alloc_)
     {
       std::size_t padding = (groupsCapa_ > 32u) ? 15u : 0u; // padding for iteration stop on sentinel group
-      void* ptr = (void*)(data.get() + itemsCapa_);
+      void* ptr = (void*)(data + itemsCapa_);
       std::memset(ptr, MetaWGroup::EMPTY_FRAG, sizeof(uint8_t) * groupsCapa_ + padding); // init MetaWGroups manually
       ((uint8_t*)ptr)[sizeof(uint8_t) * (groupsCapa_ - 1)] = MetaWGroup::SENTINEL_FRAG; // fake entry to force stop iteration
+    }
+
+    ~NewStorage()
+    {
+      if (data)
+        storage_alloc_traits::deallocate(alloc, data, totalStorageCapa);
     }
 
     static size_type storageCapa(size_type itemsCapa, size_type groupsCapa)
@@ -1608,10 +1778,10 @@ private:
       return itemsCapa + grpsAsItemCapa; // storage uses item_type element size
     }
 
-    void release() noexcept { data.release(); }
+    void release() noexcept { data = nullptr; }
 
-    item_type* values() const noexcept { return reinterpret_cast<item_type*>(data.get()); }
-    uint8_t* groups() const noexcept { return reinterpret_cast<uint8_t*>(data.get() + itemsCapa); }
+    item_type* values() const noexcept { return reinterpret_cast<item_type*>(data); }
+    uint8_t* groups() const noexcept { return reinterpret_cast<uint8_t*>(data + itemsCapa); }
   };
 
   void rehash_impl(size_type newCapa)
@@ -1625,7 +1795,7 @@ private:
 
     if (mValues.data)
     {
-      NewStorage newStorage(newCapa, newGCapa);
+      NewStorage newStorage(newCapa, newGCapa, storage_alloc());
       uint8_t* newGroups = newStorage.groups();
       item_type* newValues = newStorage.values();
 
@@ -1633,7 +1803,8 @@ private:
       move_to(newGroups, newValues, newShift, newGMask);
 
       // delete old and update
-      delete[] reinterpret_cast<storage_type*>(mValues.data);
+      storage_alloc_traits::deallocate(storage_alloc(), reinterpret_cast<storage_type*>(mValues.data),
+                                       NewStorage::storageCapa(mGMask + 1u, mGMask + 1u + 16u));
       mGroups.data = newGroups;
       mValues.data = newValues;
       newStorage.release();
@@ -1644,7 +1815,7 @@ private:
       INDIVI_WTABLE_ASSERT(mShift == EMPTY_SHIFT);
       INDIVI_WTABLE_ASSERT(mGMask == 0u);
 
-      NewStorage newStorage(newCapa, newGCapa);
+      NewStorage newStorage(newCapa, newGCapa, storage_alloc());
       mGroups.data = newStorage.groups();
       mValues.data = newStorage.values();
       newStorage.release();
@@ -1666,7 +1837,7 @@ private:
     size_type newShift = hash_shift(newCapa);
     size_type newGMask = newCapa - 1u;
 
-    NewStorage newStorage(newCapa, newGCapa);
+    NewStorage newStorage(newCapa, newGCapa, storage_alloc());
     uint8_t* newGroups = newStorage.groups();
     item_type* newValues = newStorage.values();
 
@@ -1679,7 +1850,8 @@ private:
       move_to(newGroups, newValues, newShift, newGMask);
 
       // delete old
-      delete[] reinterpret_cast<storage_type*>(mValues.data);
+      storage_alloc_traits::deallocate(storage_alloc(), reinterpret_cast<storage_type*>(mValues.data),
+                                       NewStorage::storageCapa(mGMask + 1u, mGMask + 1u + 16u));
     }
     // update
     mGroups.data = newGroups;
@@ -1705,7 +1877,7 @@ private:
     size_type newShift = hash_shift(newCapa);
     size_type newGMask = newCapa - 1u;
 
-    NewStorage newStorage(newCapa, newGCapa);
+    NewStorage newStorage(newCapa, newGCapa, storage_alloc());
     uint8_t* newGroups = newStorage.groups();
     item_type* newValues = newStorage.values();
 
@@ -1718,13 +1890,14 @@ private:
       move_to(newGroups, newValues, newShift, newGMask);
 
       // delete old
-      delete[] reinterpret_cast<storage_type*>(mValues.data);
+      storage_alloc_traits::deallocate(storage_alloc(), reinterpret_cast<storage_type*>(mValues.data),
+                                       NewStorage::storageCapa(mGMask + 1u, mGMask + 1u + 16u));
     }
     // update
     mGroups.data = newGroups;
     mValues.data = newValues;
     newStorage.release();
-    
+
     mShift = newShift;
     mGMask = newGMask;
     mMaxSize = capa_to_maxsize(newCapa);
