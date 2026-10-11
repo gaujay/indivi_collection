@@ -120,10 +120,136 @@ TEST(FlatUMapTest, Constructor3)
     flat_umap<DbgClass, DbgClass> fum2 = std::move(fum1);
     EXPECT_FALSE(fum1.contains(1));
     EXPECT_TRUE(fum2.contains(1));
+    EXPECT_EQ(fum1.size(), 0u);
+    EXPECT_EQ(fum2.size(), 1u);
   }
   // No object leak
   EXPECT_EQ(DbgClass::count, 0);
 }
+
+TEST(FlatUMapTest, AllocatorConstructors)
+{
+  using Alloc = TestAllocator<std::pair<const DbgClass, DbgClass>>;
+  using CustomMap = flat_umap<DbgClass, DbgClass, std::hash<DbgClass>, std::equal_to<DbgClass>, Alloc>;
+  {
+    Alloc alloc1(101);
+
+    // Default construct with allocator
+    CustomMap fum1(alloc1);
+    EXPECT_EQ(fum1.get_allocator().id, 101);
+
+    // Bucket count + Hash + KeyEq + Allocator
+    CustomMap fum2(16, std::hash<DbgClass>(), std::equal_to<DbgClass>(), alloc1);
+    EXPECT_EQ(fum2.get_allocator().id, 101);
+    EXPECT_GE(fum2.bucket_count(), 16u);
+
+    // Range constructor + Allocator
+    std::vector<std::pair<DbgClass, DbgClass>> vec{{1, 10}, {2, 20}};
+    CustomMap fum3(vec.begin(), vec.end(), 0, std::hash<DbgClass>(), std::equal_to<DbgClass>(), alloc1);
+    EXPECT_EQ(fum3.get_allocator().id, 101);
+    EXPECT_EQ(fum3.size(), 2u);
+
+    // Initializer list + Allocator
+    CustomMap fum4({{1, 10}, {2, 20}}, 0, std::hash<DbgClass>(), std::equal_to<DbgClass>(), alloc1);
+    EXPECT_EQ(fum4.get_allocator().id, 101);
+    EXPECT_EQ(fum4.size(), 2u);
+
+    // Copy construct with explicit extended allocator
+    CustomMap fum5(fum4, Alloc(202));
+    EXPECT_EQ(fum5.get_allocator().id, 202);
+    EXPECT_EQ(fum5.size(), 2u);
+
+    // Move construct with explicit extended allocator
+    CustomMap fum6(std::move(fum5), Alloc(303));
+    EXPECT_EQ(fum6.get_allocator().id, 303);
+    EXPECT_EQ(fum6.size(), 2u);
+  }
+  // No object leak
+  EXPECT_EQ(DbgClass::count, 0);
+}
+
+TEST(FlatUMapTest, AllocatorLifetimeAndPropagation)
+{
+  using Alloc = TestAllocator<std::pair<const DbgClass, DbgClass>>;
+  using CustomMap = flat_umap<DbgClass, DbgClass, std::hash<DbgClass>, std::equal_to<DbgClass>, Alloc>;
+  {
+    size_t alloc_count = 0;
+    size_t dealloc_count = 0;
+
+    Alloc allocA(1, &alloc_count, &dealloc_count);
+    Alloc allocB(2, &alloc_count, &dealloc_count);
+
+    {
+      CustomMap fum1(allocA);
+      fum1.emplace(10, 100);
+      fum1.emplace(20, 200);
+      fum1.reserve(64); // triggers reallocation via allocator
+
+      EXPECT_GT(alloc_count, 0u);
+      EXPECT_GT(dealloc_count, 0u);
+
+      // Copy assignment with POCCA propagation
+      CustomMap fum2(allocB);
+      fum2 = fum1;
+      EXPECT_EQ(fum2.get_allocator().id, 1);
+
+      // Move assignment with POCMA propagation
+      CustomMap fum3(allocB);
+      fum3 = std::move(fum2);
+      EXPECT_EQ(fum3.get_allocator().id, 1);
+
+      // Swap with POCS propagation
+      CustomMap fum4(Alloc(4, &alloc_count, &dealloc_count));
+      fum4.swap(fum3);
+      EXPECT_EQ(fum3.get_allocator().id, 4);
+      EXPECT_EQ(fum4.get_allocator().id, 1);
+    }
+
+    // Ensure every allocation is balanced by a deallocation
+    EXPECT_EQ(alloc_count, dealloc_count);
+  }
+  // No object leak
+  EXPECT_EQ(DbgClass::count, 0);
+}
+
+TEST(FlatUMapTest, SelectOnContainerCopyConstruction)
+{
+  using Alloc = SocccAllocator<DbgClass>;
+  using CustomMap = flat_umap<DbgClass, DbgClass, std::hash<DbgClass>, std::equal_to<DbgClass>, Alloc>;
+  {
+    Alloc alloc(100);
+    CustomMap map1({{1, 1}, {2, 2}, {3, 3}}, 0, std::hash<DbgClass>(), std::equal_to<DbgClass>(), alloc);
+
+    // Implicit copy construction must call select_on_container_copy_construction()
+    CustomMap map2(map1);
+
+    EXPECT_EQ(map1.get_allocator().id, 100);
+    EXPECT_EQ(map2.get_allocator().id, 999);
+    EXPECT_EQ(map2.size(), 3u);
+  }
+  EXPECT_EQ(DbgClass::count, 0);
+}
+
+#ifdef INDIVI_CPP17
+#include <memory_resource>
+
+TEST(FlatUMapTest, PolymorphicMemoryResource)
+{
+  std::array<std::byte, 1024> stack_buffer;
+  std::pmr::monotonic_buffer_resource mem_pool(stack_buffer.data(), stack_buffer.size());
+
+  using PmrMap = flat_umap<int, int, std::hash<int>, std::equal_to<int>, std::pmr::polymorphic_allocator<int>>;
+  {
+    PmrMap map(&mem_pool);
+    map.insert({10, 11});
+    map.insert({20, 21});
+    map.insert({30, 31});
+
+    EXPECT_EQ(map.size(), 3u);
+    EXPECT_TRUE(map.contains(20));
+  }
+}
+#endif
 
 TEST(FlatUMapTest, Assignment)
 {
@@ -223,6 +349,53 @@ TEST(FlatUMapTest, Assignment2)
     EXPECT_TRUE(fum2.contains(6));
   }
   // No object leak
+  EXPECT_EQ(DbgClass::count, 0);
+}
+
+TEST(FlatUMapTest, NonPropagatingMoveAssignment)
+{
+  using Alloc = NonPropagatingAllocator<DbgClass>;
+  using CustomMap = flat_umap<DbgClass, DbgClass, std::hash<DbgClass>, std::equal_to<DbgClass>, Alloc>;
+  {
+    Alloc allocA(100);
+    Alloc allocB(200);
+
+    CustomMap mapA({{1, 1}, {2, 2}, {3, 3}}, 0, std::hash<DbgClass>(), std::equal_to<DbgClass>(), allocA);
+    CustomMap mapB(allocB);
+
+    // Non-propagating move assignment with unequal allocators:
+    // mapB MUST retain allocB (id 200) and cannot steal mapA's buffer pointer.
+    mapB = std::move(mapA);
+
+    EXPECT_EQ(mapB.get_allocator().id, 200);
+    EXPECT_EQ(mapB.size(), 3u);
+  }
+  EXPECT_EQ(DbgClass::count, 0);
+}
+
+TEST(FlatUMapTest, AllocationFailureExceptionSafety)
+{
+  size_t alloc_count = 0, dealloc_count = 0;
+  bool should_throw = false;
+  using Alloc = ThrowingAllocator<DbgClass>;
+  using CustomMap = flat_umap<DbgClass, DbgClass, std::hash<DbgClass>, std::equal_to<DbgClass>, Alloc>;
+  {
+    Alloc alloc(1, &alloc_count, &dealloc_count, &should_throw);
+    CustomMap map(alloc);
+    map.insert({10, 11});
+    map.insert({20, 21});
+
+    // Enable failure on next allocation
+    should_throw = true;
+
+    EXPECT_THROW(map.reserve(1000), std::bad_alloc);
+
+    // Map must remain valid with pre-exception elements intact
+    EXPECT_EQ(map.size(), 2u);
+    EXPECT_TRUE(map.contains(10));
+    EXPECT_TRUE(map.contains(20));
+  }
+  EXPECT_EQ(alloc_count, dealloc_count);
   EXPECT_EQ(DbgClass::count, 0);
 }
 
@@ -1164,6 +1337,87 @@ TEST(FlatUMapTest, Equality)
   }
   // No object leak
   EXPECT_EQ(DbgClass::count, 0);
+}
+
+TEST(FlatUMapTest, IteratorConversionsAndPostIncrement)
+{
+  flat_umap<int, int> fum{{1, 10}, {2, 20}, {3, 30}};
+
+  // Test iterator to const_iterator implicit conversion
+  flat_umap<int, int>::const_iterator cit = fum.begin();
+  EXPECT_NE(cit, fum.end());
+  EXPECT_EQ(cit->first, fum.begin()->first);
+
+  // Test post-increment operator (it++)
+  auto it = fum.begin();
+  auto it_old = it++;
+  EXPECT_NE(it, it_old);
+  EXPECT_EQ(it_old, fum.begin());
+}
+
+TEST(FlatUMapTest, SelfAssignmentAndSelfSwap)
+{
+  flat_umap<int, int> fum{{1, 10}, {2, 20}};
+
+  // Self copy assignment
+#if defined(__clang__) || defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wself-assign-overloaded"
+#pragma GCC diagnostic ignored "-Wself-move"
+#endif
+  fum = fum;
+  EXPECT_EQ(fum.size(), 2u);
+  EXPECT_EQ(fum.at(1), 10);
+
+  // Self move assignment
+  fum = std::move(fum);
+  EXPECT_EQ(fum.size(), 2u);
+  EXPECT_EQ(fum.at(2), 20);
+#if defined(__clang__) || defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
+
+  // Self swap
+  fum.swap(fum);
+  EXPECT_EQ(fum.size(), 2u);
+  EXPECT_EQ(fum.at(1), 10);
+}
+
+TEST(FlatUMapTest, NonAvalanchingHash)
+{
+  struct simple_hash {
+    size_t operator()(int x) const noexcept { return static_cast<size_t>(x); }
+  };
+
+  flat_umap<int, int, simple_hash> fum;
+  for (int i = 0; i < 100; ++i)
+  {
+    fum[i] = i * 2;
+  }
+  EXPECT_EQ(fum.size(), 100u);
+  for (int i = 0; i < 100; ++i)
+  {
+    EXPECT_TRUE(fum.contains(i));
+    EXPECT_EQ(fum.at(i), i * 2);
+  }
+}
+
+TEST(FlatUMapTest, MoveConstructorWithDifferentAllocator)
+{
+  using Alloc = TestAllocator<std::pair<const int, int>>;
+  Alloc alloc1(1);
+  Alloc alloc2(2);
+
+  flat_umap<int, int, std::hash<int>, std::equal_to<int>, Alloc> fum1(alloc1);
+  fum1[10] = 100;
+  fum1[20] = 200;
+
+  // Move construct with a different allocator instance
+  flat_umap<int, int, std::hash<int>, std::equal_to<int>, Alloc> fum2(std::move(fum1), alloc2);
+  EXPECT_EQ(fum2.get_allocator().id, 2);
+  EXPECT_EQ(fum2.size(), 2u);
+  EXPECT_TRUE(fum2.contains(10));
+  EXPECT_TRUE(fum2.contains(20));
 }
 
 TEST(FlatUMapTest, BadHash)
