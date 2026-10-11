@@ -1225,6 +1225,14 @@ private:
       });
       storage_alloc_traits::deallocate(storage_alloc(), reinterpret_cast<storage_type*>(mValues.data),
                                        NewStorage::storageCapa(mGMask + 1u, mGMask + 1u + 16u));
+
+      // reset state to prevent double-destruction during stack unwinding
+      mValues.data = nullptr;
+      mGroups.data = MetaWGroup::empty_group();
+      mSize = 0u;
+      mGMask = 0u;
+      mShift = EMPTY_SHIFT;
+      mMaxSize = 0u;
     }
   }
 
@@ -1714,16 +1722,32 @@ private:
 
   void move_to(uint8_t* newGroups, item_type* newValues, size_type newShift, size_type newGMask)
   {
+    item_type* last_destroyed = nullptr;
     try
     {
       uc_for_each([&](item_type* pValue) {
         insert_unique(newGroups, newValues, newShift, newGMask, std::move(*pValue));
+        last_destroyed = pValue;
         destroy_item(pValue);
       });
     }
     catch (...)
     {
-      // destroy constructed
+      // clear old table metadata for items that were already successfully moved and destroyed
+      if (last_destroyed)
+      {
+        uc_each_while([&](item_type* pValue) {
+          if (pValue <= last_destroyed)
+          {
+            size_type realIdx = static_cast<size_type>(pValue - mValues.data);
+            MetaWGroup::reset_hfrag(mGroups.data, realIdx, mGMask);
+            return true;
+          }
+          return false;
+        });
+      }
+
+      // destroy elements successfully constructed in the new storage block
       item_type* pValue = newValues;
       uint8_t* pGroup = newGroups;
       uint8_t* last = pGroup + newGMask + 1;

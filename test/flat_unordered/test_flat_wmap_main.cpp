@@ -1600,6 +1600,160 @@ TEST(FlatWMapTest, Equality)
   EXPECT_EQ(DbgClass::count, 0);
 }
 
+TEST(FlatWMapTest, IteratorConversionsAndPostIncrement)
+{
+  flat_wmap<int, int> fwm{{1, 10}, {2, 20}, {3, 30}};
+
+  // Test iterator to const_iterator implicit conversion
+  flat_wmap<int, int>::const_iterator cit = fwm.begin();
+  EXPECT_NE(cit, fwm.end());
+  EXPECT_EQ(cit->first, fwm.begin()->first);
+
+  // Test post-increment operator (it++)
+  auto it = fwm.begin();
+  auto it_old = it++;
+  EXPECT_NE(it, it_old);
+  EXPECT_EQ(it_old, fwm.begin());
+}
+
+TEST(FlatWMapTest, SelfAssignmentAndSelfSwap)
+{
+  flat_wmap<int, int> fwm{{1, 10}, {2, 20}};
+
+  // Self copy assignment
+#if defined(__clang__) || defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wself-assign-overloaded"
+#pragma GCC diagnostic ignored "-Wself-move"
+#endif
+  fwm = fwm;
+  EXPECT_EQ(fwm.size(), 2u);
+  EXPECT_EQ(fwm.at(1), 10);
+
+  // Self move assignment
+  fwm = std::move(fwm);
+  EXPECT_EQ(fwm.size(), 2u);
+  EXPECT_EQ(fwm.at(2), 20);
+#if defined(__clang__) || defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
+
+  // Self swap
+  fwm.swap(fwm);
+  EXPECT_EQ(fwm.size(), 2u);
+  EXPECT_EQ(fwm.at(1), 10);
+}
+
+TEST(FlatWMapTest, NonAvalanchingHash)
+{
+  struct simple_hash {
+    size_t operator()(int x) const noexcept { return static_cast<size_t>(x); }
+  };
+
+  flat_wmap<int, int, simple_hash> fwm;
+  for (int i = 0; i < 100; ++i)
+  {
+    fwm[i] = i * 2;
+  }
+  EXPECT_EQ(fwm.size(), 100u);
+  for (int i = 0; i < 100; ++i)
+  {
+    EXPECT_TRUE(fwm.contains(i));
+    EXPECT_EQ(fwm.at(i), i * 2);
+  }
+}
+
+TEST(FlatWMapTest, MoveConstructorWithDifferentAllocator)
+{
+  using Alloc = TestAllocator<std::pair<const int, int>>;
+  Alloc alloc1(1);
+  Alloc alloc2(2);
+
+  flat_wmap<int, int, std::hash<int>, std::equal_to<int>, Alloc> fwm1(alloc1);
+  fwm1[10] = 100;
+  fwm1[20] = 200;
+
+  // Move construct with a different allocator instance
+  flat_wmap<int, int, std::hash<int>, std::equal_to<int>, Alloc> fwm2(std::move(fwm1), alloc2);
+  EXPECT_EQ(fwm2.get_allocator().id, 2);
+  EXPECT_EQ(fwm2.size(), 2u);
+  EXPECT_TRUE(fwm2.contains(10));
+  EXPECT_TRUE(fwm2.contains(20));
+}
+
+TEST(FlatWMapTest, RangeConstructorExceptionSafety)
+{
+  eClassCtrCpy::resetOpCounters();
+  {
+    std::vector<std::pair<int, eClassCtrCpy>> vec;
+    vec.reserve(3);
+    vec.emplace_back(1, eClassCtrCpy(10));
+    vec.emplace_back(2, eClassCtrCpy(20)); // Will throw on the second copy constructor call (WaitCount = 1)
+    vec.emplace_back(3, eClassCtrCpy(30));
+
+    EXPECT_THROW((flat_wmap<int, eClassCtrCpy>(vec.begin(), vec.end())), std::runtime_error);
+  } // vec goes out of scope here, destroying its remaining elements
+
+  // Verify that all successfully constructed objects were properly cleaned up (zero leaks)
+  EXPECT_EQ(eClassCtrCpy::count, eClassCtrCpy::decount);
+}
+
+TEST(FlatWMapTest, GrowthMoveConstructorExceptionSafety)
+{
+  eClassCtrMve::resetOpCounters();
+  {
+    flat_wmap<int, eClassCtrMve> map;
+    map.reserve(4);
+    map.emplace(1, 10);
+    map.emplace(2, 20);
+
+    // Triggering reserve/rehash forces existing elements to be move-constructed
+    // into the new buffer. eClassCtrMve throws on the second move constructor call.
+    EXPECT_THROW(map.reserve(64), std::runtime_error);
+  }
+
+  // Ensure no object leaks during failed rehash/growth unwinding
+  EXPECT_EQ(eClassCtrMve::count, eClassCtrMve::decount);
+}
+
+TEST(FlatWMapTest, InitializerListAllocationExceptionSafety)
+{
+  size_t alloc_count = 0, dealloc_count = 0;
+  bool should_throw = false;
+  using Alloc = ThrowingAllocator<std::pair<const int, int>>;
+  using CustomMap = flat_wmap<int, int, std::hash<int>, std::equal_to<int>, Alloc>;
+
+  {
+    Alloc alloc(1, &alloc_count, &dealloc_count, &should_throw);
+    should_throw = true; // Force allocation failure during initializer list construction
+
+    EXPECT_THROW((CustomMap({ {1, 10}, {2, 20}, {3, 30} }, 0, std::hash<int>(), std::equal_to<int>(), alloc)), std::bad_alloc);
+  }
+
+  // Ensure every allocation is balanced by a deallocation
+  EXPECT_EQ(alloc_count, dealloc_count);
+}
+
+TEST(FlatWMapTest, CopyAssignmentExceptionSafety)
+{
+  eClassCtrCpy::resetOpCounters();
+  {
+    flat_wmap<int, eClassCtrCpy> map1;
+    map1.emplace(1, eClassCtrCpy(10));
+    map1.emplace(2, eClassCtrCpy(20));
+
+    flat_wmap<int, eClassCtrCpy> map2;
+    map2.emplace(1, eClassCtrCpy(30));
+
+    // Copy assignment invokes copy construction to populate map2 from map1.
+    // eClassCtrCpy throws on the second copy constructor call.
+    EXPECT_THROW(map2 = map1, std::runtime_error);
+  }
+
+  // Ensure zero object leaks after exception unwinding
+  EXPECT_EQ(eClassCtrCpy::count, eClassCtrCpy::decount);
+}
+
 TEST(FlatWMapTest, BadHash)
 {
   struct bad_hash {

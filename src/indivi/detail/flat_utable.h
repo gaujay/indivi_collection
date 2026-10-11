@@ -1279,6 +1279,14 @@ private:
       });
       storage_alloc_traits::deallocate(storage_alloc(), reinterpret_cast<storage_type*>(mValues.data),
                                        NewStorage::storageCapa(bucket_count(), mGMask + 1u));
+
+      // reset state to prevent double-destruction during stack unwinding
+      mValues.data = nullptr;
+      mGroups.data = MetaGroup::empty_group();
+      mSize = 0u;
+      mGMask = 0u;
+      mShift = 0u;
+      mMaxSize = 0u;
     }
   }
   
@@ -1747,16 +1755,35 @@ private:
 
   void move_to(MetaGroup* newGroups, item_type* newValues, size_type newShift, size_type newGMask)
   {
+    item_type* last_destroyed = nullptr;
     try
     {
       uc_for_each([&](item_type* pValue) {
         insert_unique(newGroups, newValues, newShift, newGMask, std::move(*pValue));
+        last_destroyed = pValue; // Record that this old item was successfully moved
         destroy_item(pValue);
       });
     }
     catch (...)
     {
-      // destroy constructed
+      // clear old table metadata only for items that were already destroyed
+      if (last_destroyed)
+      {
+        uc_each_while([&](item_type* pValue) {
+          if (pValue <= last_destroyed)
+          {
+            size_type itemIdx = static_cast<size_type>(pValue - mValues.data);
+            size_type gIndex = itemIdx / 16u;
+            int subIndex = static_cast<int>(itemIdx % 16u);
+            mGroups.data[gIndex].reset_hfrag(subIndex);
+            mGroups.data[gIndex].reset_distance(subIndex);
+            return true;
+          }
+          return false; // stop once we pass the last destroyed item
+        });
+      }
+
+      // destroy elements successfully constructed in the new storage block
       item_type* pValue = newValues;
       MetaGroup* pGroup = newGroups;
       MetaGroup* last = pGroup + newGMask + 1;

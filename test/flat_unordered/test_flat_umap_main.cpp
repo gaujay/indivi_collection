@@ -1420,6 +1420,79 @@ TEST(FlatUMapTest, MoveConstructorWithDifferentAllocator)
   EXPECT_TRUE(fum2.contains(20));
 }
 
+TEST(FlatUMapTest, RangeConstructorExceptionSafety)
+{
+  eClassCtrCpy::resetOpCounters();
+  {
+    std::vector<std::pair<int, eClassCtrCpy>> vec;
+    vec.reserve(3);
+    vec.emplace_back(1, eClassCtrCpy(10));
+    vec.emplace_back(2, eClassCtrCpy(20)); // Will throw on the second copy constructor call (WaitCount = 1)
+    vec.emplace_back(3, eClassCtrCpy(30));
+
+    EXPECT_THROW((flat_umap<int, eClassCtrCpy>(vec.begin(), vec.end())), std::runtime_error);
+  } // vec goes out of scope here, destroying its remaining elements
+
+  // Verify that all successfully constructed objects were properly cleaned up (zero leaks)
+  EXPECT_EQ(eClassCtrCpy::count, eClassCtrCpy::decount);
+}
+
+TEST(FlatUMapTest, GrowthMoveConstructorExceptionSafety)
+{
+  eClassCtrMve::resetOpCounters();
+  {
+    flat_umap<int, eClassCtrMve> map;
+    map.reserve(4);
+    map.emplace(1, 10);
+    map.emplace(2, 20);
+
+    // Triggering reserve/rehash forces existing elements to be move-constructed
+    // into the new buffer. eClassCtrMve throws on the second move constructor call.
+    EXPECT_THROW(map.reserve(64), std::runtime_error);
+  }
+
+  // Ensure no object leaks during failed rehash/growth unwinding
+  EXPECT_EQ(eClassCtrMve::count, eClassCtrMve::decount);
+}
+
+TEST(FlatUMapTest, InitializerListAllocationExceptionSafety)
+{
+  size_t alloc_count = 0, dealloc_count = 0;
+  bool should_throw = false;
+  using Alloc = ThrowingAllocator<std::pair<const int, int>>;
+  using CustomMap = flat_umap<int, int, std::hash<int>, std::equal_to<int>, Alloc>;
+
+  {
+    Alloc alloc(1, &alloc_count, &dealloc_count, &should_throw);
+    should_throw = true; // Force allocation failure during initializer list construction
+
+    EXPECT_THROW((CustomMap({ {1, 10}, {2, 20}, {3, 30} }, 0, std::hash<int>(), std::equal_to<int>(), alloc)), std::bad_alloc);
+  }
+
+  // Ensure every allocation is balanced by a deallocation
+  EXPECT_EQ(alloc_count, dealloc_count);
+}
+
+TEST(FlatUMapTest, CopyAssignmentExceptionSafety)
+{
+  eClassCtrCpy::resetOpCounters();
+  {
+    flat_umap<int, eClassCtrCpy> map1;
+    map1.emplace(1, eClassCtrCpy(10));
+    map1.emplace(2, eClassCtrCpy(20));
+
+    flat_umap<int, eClassCtrCpy> map2;
+    map2.emplace(1, eClassCtrCpy(30));
+
+    // Copy assignment invokes copy construction to populate map2 from map1.
+    // eClassCtrCpy throws on the second copy constructor call.
+    EXPECT_THROW(map2 = map1, std::runtime_error);
+  }
+
+  // Ensure zero object leaks after exception unwinding
+  EXPECT_EQ(eClassCtrCpy::count, eClassCtrCpy::decount);
+}
+
 TEST(FlatUMapTest, BadHash)
 {
   struct bad_hash {
